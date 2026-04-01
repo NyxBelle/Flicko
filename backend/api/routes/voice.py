@@ -58,21 +58,3 @@ def get_voice_profile(db: Session = Depends(get_db), user=Depends(get_current_us
         "voice_id": profile.elevenlabs_id,
         "created_at": profile.created_at
     }
-```
-
-**Ctrl+S**
-
----
-
-Your `backend/api` folder should now look like this:
-```
-api/
-├── __init__.py
-├── dependencies.py
-└── routes/
-    ├── __init__.py
-    ├── auth.py
-    ├── videos.py
-    ├── projects.py
-    ├── jobs.py
-    └── voice.py

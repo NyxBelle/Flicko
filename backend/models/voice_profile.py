@@ -16,27 +16,3 @@ class VoiceProfile(Base):
     created_at      = Column(DateTime, default=datetime.utcnow)
 
     user            = relationship("User", back_populates="voice_profile")
-```
-
-**Ctrl+S**
-
----
-
-### File — `backend/models/__init__.py`
-
-Right-click the **backend/models** folder → New File → name it `__init__.py`
-
-Leave it **completely empty** and just **Ctrl+S**. This file just tells Python that models is a package.
-
----
-
-Your `backend/models` folder should now have:
-```
-models/
-├── __init__.py
-├── database.py
-├── user.py
-├── project.py
-├── video.py
-├── job.py
-└── voice_profile.py

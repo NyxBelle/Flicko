@@ -38,19 +38,3 @@ def generate_voiceover(script: str, voice_id: str, output_path: str) -> str:
     with open(output_path, "wb") as f:
         f.write(response.content)
     return output_path
-```
-
-**Ctrl+S**
-
----
-
-Your `backend/services` folder should now have:
-```
-services/
-├── __init__.py
-├── storage.py
-├── transcription.py
-├── scene_detection.py
-├── ai_editor.py
-├── video_renderer.py
-└── voice_clone.py
