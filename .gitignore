@@ -1,0 +1,17 @@
+# Environment variables - never commit these
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Node modules
+node_modules/
+
+# Next.js build
+frontend/.next/
+
+# OS files
+.DS_Store
+Thumbs.db
