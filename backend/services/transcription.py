@@ -1,23 +1,24 @@
-from openai import OpenAI
+import requests
 from config import settings
-
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 def transcribe_video(video_path: str) -> dict:
     with open(video_path, "rb") as f:
-        response = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=f,
-            response_format="verbose_json"
+        response = requests.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+            files={"file": (video_path, f, "video/mp4")},
+            data={"model": "whisper-1", "response_format": "verbose_json"}
         )
+    response.raise_for_status()
+    result = response.json()
     return {
-        "text": response.text,
+        "text": result.get("text", ""),
         "segments": [
             {
-                "start": s.start,
-                "end": s.end,
-                "text": s.text
+                "start": s.get("start"),
+                "end": s.get("end"),
+                "text": s.get("text")
             }
-            for s in response.segments
+            for s in result.get("segments", [])
         ]
     }
