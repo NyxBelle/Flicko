@@ -1,11 +1,23 @@
-import whisper
+from openai import OpenAI
+from config import settings
 
-model = whisper.load_model("base")
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 def transcribe_video(video_path: str) -> dict:
-    result = model.transcribe(video_path)
+    with open(video_path, "rb") as f:
+        response = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=f,
+            response_format="verbose_json"
+        )
     return {
-        "text": result["text"],
-        "segments": result["segments"]
+        "text": response.text,
+        "segments": [
+            {
+                "start": s.start,
+                "end": s.end,
+                "text": s.text
+            }
+            for s in response.segments
+        ]
     }
-    

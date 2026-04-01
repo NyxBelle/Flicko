@@ -5,12 +5,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     build-essential \
-    git \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip setuptools wheel
-
-RUN pip install --no-cache-dir git+https://github.com/openai/whisper.git
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
