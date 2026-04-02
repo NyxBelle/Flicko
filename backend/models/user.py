@@ -12,6 +12,9 @@ class User(Base):
     hashed_pw     = Column(String, nullable=False)
     created_at    = Column(DateTime, default=datetime.utcnow)
     is_active     = Column(Boolean, default=True)
+    plan          = Column(String, default="free")        # "free" or "pro"
+    plan_expires  = Column(DateTime, nullable=True)       # when Pro expires
 
     projects      = relationship("Project", back_populates="user")
     voice_profile = relationship("VoiceProfile", back_populates="user", uselist=False)
+    credits       = relationship("Credit", back_populates="user", uselist=False)

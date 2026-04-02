@@ -80,7 +80,8 @@ def process_video_project(self, job_id: str, project_id: str, payload: dict):
         render_video(
             edit_plan=edit_plan,
             source_dir=work_dir,
-            output_path=output_path
+            output_path=output_path,
+            is_free_plan=payload.get("is_free_plan", False)
         )
 
         update_job(db, job_id, "processing", 90, "Uploading finished video...")

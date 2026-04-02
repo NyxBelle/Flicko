@@ -5,7 +5,7 @@ celery_app = Celery(
     "flicko",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["workers.tasks"]
+    include=["workers.tasks", "workers.scheduler"]
 )
 
 celery_app.conf.update(
