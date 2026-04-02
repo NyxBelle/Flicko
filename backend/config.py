@@ -25,14 +25,3 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 settings = Settings()
-```
-
-**Ctrl+S**
-
----
-
-Now open your `.env` file and add these three new lines at the bottom:
-```
-FLUTTERWAVE_SECRET_KEY=FLWSECK_TEST-your-flutterwave-secret-key
-FLUTTERWAVE_WEBHOOK_SECRET=your-flutterwave-webhook-secret
-PAYSTACK_SECRET_KEY=sk_test_your-paystack-secret-key
