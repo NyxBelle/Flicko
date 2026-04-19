@@ -13,16 +13,18 @@ router = APIRouter()
 @router.post("/")
 def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
 
-    # ── Check voiceover access ─────────────────────────────────────────
     if payload.get("include_voiceover") and user.plan == "free":
         raise HTTPException(403, "Voiceover is a Pro feature. Please upgrade to access it.")
 
-    # ── Check and deduct credits ───────────────────────────────────────
     credit_result = check_and_deduct_credit(db, user)
     if not credit_result["success"]:
         raise HTTPException(403, credit_result["message"])
 
-    # ── Create project ─────────────────────────────────────────────────
+    if user.plan == "free":
+        project_count = db.query(Project).filter(Project.user_id == user.id).count()
+        if project_count >= 3:
+            raise HTTPException(403, "Free plan is limited to 3 projects. Please upgrade to Pro.")
+
     project = Project(
         id=str(uuid.uuid4()),
         user_id=user.id,
@@ -33,12 +35,6 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
         status="processing"
     )
     db.add(project)
-
-    # ── Check free plan project limit ──────────────────────────────────
-    if user.plan == "free":
-        project_count = db.query(Project).filter(Project.user_id == user.id).count()
-        if project_count >= 3:
-            raise HTTPException(403, "Free plan is limited to 3 projects. Please upgrade to Pro.")
 
     videos = (
         db.query(Video)
@@ -62,7 +58,8 @@ def create_project(payload: dict, db: Session = Depends(get_db), user=Depends(ge
         "voice_id": user.voice_profile.elevenlabs_id if user.voice_profile else None,
         "voiceover_script": payload.get("voiceover_script"),
         "music_key": payload.get("music_key"),
-        "is_free_plan": user.plan == "free",    # passed to worker for watermark
+        "is_free_plan": user.plan == "free",
+        "platform": payload.get("platform", "tiktok"),
     }
 
     process_video_project.delay(job.id, project.id, task_payload)

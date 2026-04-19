@@ -15,16 +15,11 @@ PAYSTACK_BASE = "https://api.paystack.co"
 FLUTTERWAVE_BASE = "https://api.flutterwave.com/v3"
 
 
-# ═══════════════════════════════════════════════════════════
-# PAYSTACK
-# ═══════════════════════════════════════════════════════════
-
 @router.post("/paystack/initiate")
 def initiate_paystack(
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
-    """Frontend calls this when user clicks Upgrade via Paystack."""
     response = requests.post(
         f"{PAYSTACK_BASE}/transaction/initialize",
         headers={
@@ -53,7 +48,6 @@ def initiate_paystack(
 
 @router.post("/paystack/webhook")
 async def paystack_webhook(request: Request, db: Session = Depends(get_db)):
-    """Paystack calls this automatically when payment succeeds."""
     payload = await request.body()
     signature = request.headers.get("x-paystack-signature")
 
@@ -81,7 +75,6 @@ def verify_paystack(
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
-    """Frontend calls this on success page to confirm payment."""
     response = requests.get(
         f"{PAYSTACK_BASE}/transaction/verify/{reference}",
         headers={"Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}"}
@@ -98,16 +91,11 @@ def verify_paystack(
     return {"status": "pending"}
 
 
-# ═══════════════════════════════════════════════════════════
-# FLUTTERWAVE
-# ═══════════════════════════════════════════════════════════
-
 @router.post("/flutterwave/initiate")
 def initiate_flutterwave(
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
-    """Frontend calls this when user clicks Upgrade via Flutterwave."""
     response = requests.post(
         f"{FLUTTERWAVE_BASE}/payments",
         headers={
@@ -143,8 +131,6 @@ def initiate_flutterwave(
 
 @router.post("/flutterwave/webhook")
 async def flutterwave_webhook(request: Request, db: Session = Depends(get_db)):
-    """Flutterwave calls this automatically when payment succeeds."""
-    # Verify webhook signature
     signature = request.headers.get("verif-hash")
     if signature != settings.FLUTTERWAVE_WEBHOOK_SECRET:
         raise HTTPException(400, "Invalid webhook signature")
@@ -167,7 +153,6 @@ def verify_flutterwave(
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
-    """Frontend calls this on success page to confirm payment."""
     response = requests.get(
         f"{FLUTTERWAVE_BASE}/transactions/{transaction_id}/verify",
         headers={"Authorization": f"Bearer {settings.FLUTTERWAVE_SECRET_KEY}"}
@@ -184,12 +169,7 @@ def verify_flutterwave(
     return {"status": "pending"}
 
 
-# ═══════════════════════════════════════════════════════════
-# SHARED HELPER
-# ═══════════════════════════════════════════════════════════
-
 def _upgrade_user(db: Session, user_id: str) -> dict:
-    """Shared logic to upgrade a user to Pro after successful payment."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "User not found")
