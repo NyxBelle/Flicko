@@ -7,6 +7,7 @@ const defaultProps: FlickoVideoProps = {
   captions: [],
   captionStyle: 'bold_center',
   transitionType: 'cut',
+  hookText: '',
   width: 1080,
   height: 1920,
 };

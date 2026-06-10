@@ -19,7 +19,7 @@ interface VideoUploadZoneProps {
 
 export type { UploadedFile };
 
-export default function VideoUploadZone({ files, onChange, maxFiles = 5 }: VideoUploadZoneProps) {
+export default function VideoUploadZone({ files, onChange, maxFiles = 10 }: VideoUploadZoneProps) {
   const [error, setError] = useState<string | null>(null);
 
   const onDrop = useCallback(
@@ -124,7 +124,7 @@ export default function VideoUploadZone({ files, onChange, maxFiles = 5 }: Video
             {isDragActive ? "Drop your videos here" : "Drop your footage here"}
           </p>
           <p style={{ fontSize: 12.5, color: "var(--muted)" }}>
-            MP4, MOV, or WebM · Up to {maxFiles} videos · 500MB each
+            MP4, MOV, or WebM · Up to {maxFiles} clips · 500MB each
           </p>
           <p style={{ fontSize: 12, color: "var(--accent)", fontWeight: 500, marginTop: 10 }}>Or click to browse</p>
         </div>

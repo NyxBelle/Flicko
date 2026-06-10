@@ -24,18 +24,21 @@ export interface FlickoVideoProps {
   captions: Caption[];
   captionStyle: string;
   transitionType: string;
+  hookText?: string;
   width: number;
   height: number;
 }
 
 const TRANSITION_FRAMES = 9; // 0.3s at 30fps
+const HOOK_DURATION = 75; // 2.5s
+const HOOK_FADE_OUT = 15; // 0.5s fade at the end
 
 const CAPTION_STYLES: Record<
   string,
   {bottom: number | string; style: React.CSSProperties}
 > = {
   bold_center: {
-    bottom: '45%',
+    bottom: '42%',
     style: {
       fontSize: 68,
       fontWeight: 900,
@@ -44,7 +47,7 @@ const CAPTION_STYLES: Record<
     },
   },
   viral_highlight: {
-    bottom: '40%',
+    bottom: '38%',
     style: {
       fontSize: 72,
       fontWeight: 900,
@@ -79,6 +82,7 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
   captions,
   captionStyle,
   transitionType,
+  hookText,
 }) => {
   const frame = useCurrentFrame();
 
@@ -88,6 +92,20 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
     cumulative += clip.durationInFrames;
     return {clip, start};
   });
+
+  // Hook overlay opacity: fade in over 10 frames, hold, fade out over last 15 frames
+  const hookOpacity =
+    hookText && frame < HOOK_DURATION
+      ? interpolate(frame, [0, 10, HOOK_DURATION - HOOK_FADE_OUT, HOOK_DURATION], [0, 1, 1, 0], {
+          extrapolateLeft: 'clamp',
+          extrapolateRight: 'clamp',
+        })
+      : 0;
+
+  const hookScale =
+    hookText && frame < HOOK_DURATION
+      ? interpolate(frame, [0, 12], [0.88, 1], {extrapolateRight: 'clamp'})
+      : 1;
 
   return (
     <AbsoluteFill style={{background: '#000'}}>
@@ -138,10 +156,20 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
         );
       })}
 
+      {/* Captions with pop-in animation */}
       {captionStyle !== 'none' &&
         captions.map((cap, i) => {
           if (frame < cap.startFrame || frame > cap.endFrame) return null;
           const cs = CAPTION_STYLES[captionStyle] ?? CAPTION_STYLES.minimal_bottom;
+          // Pop-in: scale from 0.8 → 1.04 → 1 over 10 frames
+          const capAge = frame - cap.startFrame;
+          const popScale = interpolate(
+            capAge,
+            [0, 6, 10],
+            [0.8, 1.04, 1],
+            {extrapolateRight: 'clamp'},
+          );
+          const capOpacity = interpolate(capAge, [0, 5], [0, 1], {extrapolateRight: 'clamp'});
           return (
             <div
               key={i}
@@ -161,6 +189,8 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
                   fontFamily: '"Arial Black", Impact, sans-serif',
                   textAlign: 'center',
                   maxWidth: '88%',
+                  opacity: capOpacity,
+                  transform: `scale(${popScale})`,
                   ...cs.style,
                 }}
               >
@@ -169,6 +199,38 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
             </div>
           );
         })}
+
+      {/* Hook text overlay — shown for the first ~2.5s */}
+      {hookText && hookOpacity > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '14%',
+            left: 0,
+            right: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '0 6%',
+            pointerEvents: 'none',
+          }}
+        >
+          <div
+            style={{
+              fontFamily: '"Arial Black", Impact, sans-serif',
+              fontSize: 58,
+              fontWeight: 900,
+              color: '#FFE066',
+              textShadow: '3px 3px 14px rgba(0,0,0,0.95)',
+              textAlign: 'center',
+              maxWidth: '90%',
+              opacity: hookOpacity,
+              transform: `scale(${hookScale})`,
+            }}
+          >
+            {hookText}
+          </div>
+        </div>
+      )}
     </AbsoluteFill>
   );
 };

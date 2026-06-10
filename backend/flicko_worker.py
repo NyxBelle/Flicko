@@ -58,6 +58,7 @@ class EditDecision(BaseModel):
     editorial_note: Optional[str] = None
     energy_arc: Optional[str] = None
     suggested_title: Optional[str] = None
+    hook_text: Optional[str] = None
 
 
 class RenderRequest(BaseModel):
@@ -207,6 +208,80 @@ def _group_to_phrase_captions(words: list, fps: int = 30, max_words: int = 4) ->
     return captions
 
 
+def _get_music_track(supabase_url: str, key: str, energy_level: int) -> Optional[str]:
+    """Fetches a music track from the Supabase 'music' bucket. Returns local .mp3 path or None."""
+    try:
+        r = requests.post(
+            f"{supabase_url}/storage/v1/object/list/music",
+            headers={"Authorization": f"Bearer {key}", "apikey": key, "Content-Type": "application/json"},
+            json={"prefix": "", "limit": 100, "offset": 0},
+            timeout=10,
+        )
+        if not r.ok:
+            print(f"[music] Could not list music bucket ({r.status_code}) — add mp3 files to Supabase 'music' bucket to enable background music")
+            return None
+        files = [f for f in r.json() if isinstance(f, dict) and f.get("name", "").lower().endswith(".mp3")]
+        if not files:
+            print("[music] No .mp3 files in Supabase 'music' bucket — skipping background music")
+            return None
+
+        import random
+        # Prefer tracks whose name contains the energy tier
+        tier = "high" if energy_level >= 4 else ("medium" if energy_level >= 2 else "low")
+        matching = [f for f in files if tier in f["name"].lower()]
+        chosen = random.choice(matching if matching else files)
+        track_name = chosen["name"]
+
+        # Get signed URL
+        r2 = requests.post(
+            f"{supabase_url}/storage/v1/object/sign/music/{track_name}",
+            headers={"Authorization": f"Bearer {key}", "apikey": key, "Content-Type": "application/json"},
+            json={"expiresIn": 3600},
+            timeout=10,
+        )
+        if not r2.ok:
+            return None
+        data = r2.json()
+        signed = data.get("signedURL") or data.get("signedUrl") or ""
+        if not signed:
+            return None
+        full_url = f"{supabase_url}{signed}" if signed.startswith("/") else signed
+
+        tmp = tempfile.mktemp(suffix=".mp3")
+        _download(full_url, tmp)
+        print(f"[music] Downloaded track: {track_name}")
+        return tmp
+    except Exception as e:
+        print(f"[music] Failed to fetch track: {e}")
+        return None
+
+
+def _mix_music(video_path: str, music_path: str, out_path: str, voice_vol: float = 0.55, music_vol: float = 0.22) -> bool:
+    """Mix background music into video. Lowers original audio and layers music at lower volume."""
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", video_path,
+                "-stream_loop", "-1", "-i", music_path,
+                "-filter_complex",
+                f"[0:a]volume={voice_vol}[v];[1:a]volume={music_vol}[m];[v][m]amix=inputs=2:duration=first:dropout_transition=2[out]",
+                "-map", "0:v",
+                "-map", "[out]",
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-ar", "44100",
+                "-shortest",
+                out_path,
+            ],
+            check=True, capture_output=True,
+        )
+        return os.path.exists(out_path)
+    except Exception as e:
+        print(f"[music] Mix failed: {e}")
+        return False
+
+
 def _run_remotion(
     job_id: str,
     clip_paths: list,
@@ -242,6 +317,7 @@ def _run_remotion(
         "captions": captions,
         "captionStyle": ed.caption_style,
         "transitionType": ed.transition_type,
+        "hookText": ed.hook_text or ed.suggested_title or "",
         "width": 1080 if is_vertical else 1920,
         "height": 1920 if is_vertical else 1080,
     }
@@ -391,6 +467,19 @@ def _do_render(
                 check=True, capture_output=True,
             )
 
+        # 4b. Mix background music when requested
+        if ed.audio_treatment in ("trending_sound", "flicko_decides"):
+            music_path = _get_music_track(supabase_url, supabase_key, ed.energy_level)
+            if music_path:
+                mixed = os.path.join(work, "final_mixed.mp4")
+                if _mix_music(final, music_path, mixed):
+                    final = mixed
+                    print("[worker] Background music mixed in")
+                try:
+                    os.remove(music_path)
+                except Exception:
+                    pass
+
         # 5. Upload to Supabase renders bucket — path starts with user_id so RLS policy allows signed URL creation
         dest_path = f"{user_id}/{project_id}/output_{job_id[:8]}.mp4"
         _upload_supabase(final, supabase_url, supabase_key, dest_path)
@@ -519,6 +608,17 @@ PLATFORM TARGETS
 - Shorts: under 60s
 - LinkedIn: 45–90s
 
+AUDIO TREATMENT RULES — what to write in "audio_treatment":
+  "trending_sound"  → background music overlaid (DEFAULT for TikTok/Reels/Shorts energy content)
+  "keep_original"   → preserve raw footage audio only (when dialogue/natural sound IS the content)
+  "voiceover"       → AI voice narration (only when has_voice_clone=Yes)
+  If USER'S AUDIO PREFERENCE is "flicko_decides": YOU choose. Default to "trending_sound" for vertical/entertainment content. Use "keep_original" only when the original audio is irreplaceable (interviews, comedy timing, etc).
+  If USER'S AUDIO PREFERENCE is "trending_sound": ALWAYS return "trending_sound".
+  NEVER return "no_voiceover" or any other value not in the list above.
+
+HOOK TEXT
+Write a punchy 4–7 word overlay caption for the first 2 seconds. It should hook the viewer before they can scroll. Examples: "Wait till the end...", "This changed everything", "Nobody talks about this". No hashtags, no emojis.
+
 Return ONLY a valid JSON object, no markdown:
 {
   "segments": [{"start": 0.0, "end": 0.0, "order": 1, "reason": "...", "speed": 1.0}],
@@ -528,6 +628,7 @@ Return ONLY a valid JSON object, no markdown:
   "caption_style": "bold_center",
   "energy_level": 4,
   "hook_moment": 0.0,
+  "hook_text": "Wait till you see this",
   "energy_arc": "hook → tight setup (4s) → punchline hold (2s) → reaction → out",
   "rationale": "Specific to this content — reference timestamps and explain WHY.",
   "editorial_note": "One sentence of directorial thinking.",
@@ -535,7 +636,7 @@ Return ONLY a valid JSON object, no markdown:
 }
 PACING: slow | medium | fast | very_fast
 TRANSITION: cut | fade | zoom | swipe
-AUDIO: flicko_decides | voiceover | trending_sound
+AUDIO: trending_sound | keep_original | voiceover
 CAPTION: bold_center | minimal_bottom | viral_highlight | professional | none
 SPEED: 0.5 | 1.0 | 2.0"""
 
