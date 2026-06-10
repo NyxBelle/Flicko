@@ -486,6 +486,243 @@ def get_render(job_id: str):
     return job
 
 
+# ─── Editor system prompt ─────────────────────────────────────────────────────
+
+_EDITOR_SYSTEM_PROMPT = """You are a senior creative video editor with 15 years of professional experience across social media campaigns, documentaries, branded content, and viral short-form. You have an intuitive read on raw material and you make strong, opinionated creative decisions. You are not trimming a video — you are finding the edit that lives inside the footage.
+
+VARIABLE CLIP DURATION IS YOUR PRIMARY TOOL
+- Short clips (0.5–2s): urgency, pace, montage energy
+- Medium clips (2–5s): information delivery, setup
+- Long clips (5–10s): weight, emotion, comedic timing, revelations
+- Cut TIGHT on setup. Hold LONG on reactions, punchlines, emotional peaks. Never cut mid-reaction.
+
+REWIND / REPEAT TECHNIQUE
+Replay the same moment by including overlapping timestamps with different "order" values. Use for emphasis, bookends, or reaction structure.
+
+THE ENERGY ARC
+Plan a curve: HOOK → BUILD → PEAK → BREATH (optional) → STRONG OUT. Never end mid-thought.
+Describe this arc in the "energy_arc" field.
+
+HOOK QUALITY
+Choose a hook that: starts in the middle of action/conflict, asks a question the viewer can't leave unanswered, or shows the result first (reverse curiosity).
+
+DEAD AIR IS YOUR ENEMY
+Remove filler words, false starts, repeated points, long pauses, tangents. Be ruthless.
+
+SPEED MODIFIERS — use sparingly (max 1–2 per edit)
+- 0.5 (slow-mo): punchline reactions, impact moments, emotion
+- 2.0 (double speed): montage filler, setup context
+- 1.0 (normal): most clips
+
+PLATFORM TARGETS
+- TikTok/Reels: 15–45s
+- Shorts: under 60s
+- LinkedIn: 45–90s
+
+Return ONLY a valid JSON object, no markdown:
+{
+  "segments": [{"start": 0.0, "end": 0.0, "order": 1, "reason": "...", "speed": 1.0}],
+  "pacing": "fast",
+  "transition_type": "cut",
+  "audio_treatment": "trending_sound",
+  "caption_style": "bold_center",
+  "energy_level": 4,
+  "hook_moment": 0.0,
+  "energy_arc": "hook → tight setup (4s) → punchline hold (2s) → reaction → out",
+  "rationale": "Specific to this content — reference timestamps and explain WHY.",
+  "editorial_note": "One sentence of directorial thinking.",
+  "suggested_title": "Optional"
+}
+PACING: slow | medium | fast | very_fast
+TRANSITION: cut | fade | zoom | swipe
+AUDIO: flicko_decides | voiceover | trending_sound
+CAPTION: bold_center | minimal_bottom | viral_highlight | professional | none
+SPEED: 0.5 | 1.0 | 2.0"""
+
+
+# ─── Supabase project update (REST, no SDK needed) ────────────────────────────
+
+def _update_project(supabase_url: str, key: str, project_id: str, payload: dict) -> None:
+    r = requests.patch(
+        f"{supabase_url}/rest/v1/projects?id=eq.{project_id}",
+        headers={
+            "Authorization": f"Bearer {key}",
+            "apikey": key,
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        },
+        json=payload,
+        timeout=30,
+    )
+    if not r.ok:
+        print(f"[supabase] update failed {r.status_code}: {r.text[:200]}")
+
+
+# ─── Claude edit decision (runs on Railway, not Vercel) ───────────────────────
+
+def _make_edit_decision(
+    api_key: str,
+    transcript: str,
+    content_context: str,
+    desired_outcome: str,
+    target_platform: str,
+    audio_preference: str,
+    duration_seconds: float,
+    has_voice_clone: bool,
+) -> dict:
+    try:
+        import anthropic as _anthropic
+    except ImportError:
+        raise RuntimeError("Install: pip install anthropic")
+
+    client = _anthropic.Anthropic(api_key=api_key)
+    user_msg = (
+        f"VIDEO TRANSCRIPT:\n{transcript}\n\n"
+        f"CREATOR'S CONTEXT:\n{content_context}\n\n"
+        f"DESIRED OUTCOME:\n{desired_outcome}\n\n"
+        f"TARGET PLATFORM: {target_platform}\n"
+        f"USER'S AUDIO PREFERENCE: {audio_preference}\n"
+        f"VOICE CLONE AVAILABLE: {'Yes' if has_voice_clone else 'No'}\n"
+        f"TOTAL VIDEO DURATION: {duration_seconds} seconds\n\n"
+        "Make your creative editing decisions now. Return only valid JSON."
+    )
+    msg = client.messages.create(
+        model="claude-opus-4-7",
+        max_tokens=2048,
+        system=_EDITOR_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+    import re
+    raw = msg.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+    return json.loads(raw)
+
+
+# ─── Full pipeline endpoint (all stages on Railway) ───────────────────────────
+
+class ProcessRequest(BaseModel):
+    video_urls: List[str]
+    content_context: str
+    desired_outcome: str
+    target_platform: str
+    audio_preference: str
+    project_id: str
+    user_id: str
+    supabase_url: str
+    supabase_service_key: str
+    anthropic_api_key: Optional[str] = None
+    has_voice_clone: bool = False
+
+
+def _do_process(job_id: str, req: ProcessRequest) -> None:
+    sb_url = req.supabase_url
+    sb_key = req.supabase_service_key
+    pid = req.project_id
+
+    def status(s: str, extra: Optional[dict] = None) -> None:
+        payload: dict = {"status": s}
+        if extra:
+            payload.update(extra)
+        _update_project(sb_url, sb_key, pid, payload)
+
+    work = None
+    try:
+        # Stage 1: Transcription
+        status("transcribing")
+        work = tempfile.mkdtemp(prefix=f"flicko_{pid[:8]}_")
+        local_paths, total_dur = [], 0.0
+
+        for i, url in enumerate(req.video_urls):
+            p = os.path.join(work, f"src_{i}.mp4")
+            _download(url, p)
+            total_dur += _duration(p)
+            local_paths.append(p)
+
+        if len(local_paths) > 1:
+            lst = os.path.join(work, "concat.txt")
+            with open(lst, "w") as f:
+                for p in local_paths:
+                    f.write(f"file '{p}'\n")
+            combined = os.path.join(work, "combined.mp4")
+            subprocess.run(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", combined],
+                check=True, capture_output=True,
+            )
+            send_path = combined
+        else:
+            send_path = local_paths[0]
+
+        transcript_text, transcript_words = _transcribe_local(send_path)
+        if not transcript_text:
+            transcript_text = "[Transcription unavailable]"
+
+        _update_project(sb_url, sb_key, pid, {"transcript": transcript_text})
+
+        # Stage 2: Analyze (status beat for UI)
+        status("analyzing")
+
+        # Stage 3: Claude edit decision
+        status("deciding")
+        anthropic_key = req.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY", "")
+        if not anthropic_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not set on worker")
+
+        decision_dict = _make_edit_decision(
+            api_key=anthropic_key,
+            transcript=transcript_text,
+            content_context=req.content_context,
+            desired_outcome=req.desired_outcome,
+            target_platform=req.target_platform,
+            audio_preference=req.audio_preference,
+            duration_seconds=total_dur,
+            has_voice_clone=req.has_voice_clone,
+        )
+        _update_project(sb_url, sb_key, pid, {"edit_decisions": decision_dict})
+
+        # Stage 4: Edit + render
+        status("editing")
+        ed = EditDecision(**decision_dict)
+
+        render_job_id = str(uuid.uuid4())
+        _jobs[render_job_id] = {"status": "pending"}
+        status("rendering")
+
+        _do_render(
+            render_job_id,
+            req.video_urls,
+            ed,
+            req.target_platform,
+            pid,
+            req.user_id,
+            sb_url,
+            sb_key,
+            transcript_words,
+        )
+
+        result = _jobs.get(render_job_id, {})
+        if result.get("status") == "done":
+            status("done", {"render_url": result["output_url"]})
+        else:
+            raise RuntimeError(result.get("error") or "Render failed")
+
+    except Exception as exc:
+        print(f"[process] {pid} failed:\n{traceback.format_exc()}")
+        _update_project(sb_url, sb_key, pid, {"status": "failed", "error_message": str(exc)})
+    finally:
+        if work and os.path.exists(work):
+            shutil.rmtree(work, ignore_errors=True)
+
+
+@app.post("/process")
+def process_video(req: ProcessRequest):
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {"status": "started"}
+    threading.Thread(target=_do_process, args=(job_id, req), daemon=True).start()
+    return {"ok": True, "job_id": job_id}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
