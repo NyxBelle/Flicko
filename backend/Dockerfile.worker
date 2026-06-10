@@ -1,0 +1,68 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# ── System packages ───────────────────────────────────────────────────────────
+# ffmpeg        : video processing
+# chromium      : headless browser for Remotion (uses system Chrome, no download)
+# libgl1-mesa-*  : Mesa GL — required for Remotion's --gl=angle renderer
+# fonts-*       : caption text rendering in Chromium
+# curl + gnupg  : install Node.js from NodeSource
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    gnupg \
+    ca-certificates \
+    chromium \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpangocairo-1.0-0 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libgtk-3-0 \
+    libx11-xcb1 \
+    libxss1 \
+    libgl1-mesa-dri \
+    libgl1 \
+    fonts-liberation \
+    fonts-noto-core \
+    fonts-noto-color-emoji \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Node.js 20 ────────────────────────────────────────────────────────────────
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python dependencies ───────────────────────────────────────────────────────
+COPY requirements.worker.txt .
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.worker.txt
+
+# ── App code ──────────────────────────────────────────────────────────────────
+# .dockerignore excludes renderer/node_modules so we get a clean Linux install
+COPY flicko_worker.py .
+COPY renderer/ ./renderer/
+
+# ── Remotion: fresh Linux npm install + skip Puppeteer's own Chromium download ─
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+# Tell Chromium to run without sandboxing (required when running as root in Docker)
+ENV CHROMIUM_FLAGS="--no-sandbox --disable-setuid-sandbox"
+
+RUN cd renderer && npm install
+
+# ── Whisper model size (override per Railway service if needed) ───────────────
+ENV WHISPER_MODEL=base
+ENV USE_REMOTION=true
+
+# Railway injects $PORT at runtime
+CMD ["sh", "-c", "uvicorn flicko_worker:app --host 0.0.0.0 --port ${PORT:-8001}"]

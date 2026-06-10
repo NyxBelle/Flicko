@@ -1,28 +1,42 @@
-import Link from "next/link";
+import type { Metadata } from "next";
+import { LandingPageContent } from "@/components/landing/LandingPageContent";
 
-export default function Home() {
+export const metadata: Metadata = {
+  title: "Flicko — Go viral in your own voice",
+  description:
+    "Upload your raw footage. Describe what you want. Flicko makes every creative editing decision a world-class editor would — then shows you exactly why.",
+  keywords: ["AI video editor", "video editing", "short form video", "social media video", "AI editor"],
+  openGraph: {
+    title: "Flicko — Go viral in your own voice",
+    description:
+      "Upload your footage. Get back a finished, post-ready cut with a written rationale for every decision.",
+    type: "website",
+  },
+};
+
+export default function Page() {
   return (
-    <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-8">
-      <div className="text-center max-w-2xl">
-        <h1 className="text-6xl font-bold mb-4">🎬 Flicko</h1>
-        <p className="text-xl text-zinc-400 mb-8">
-          Upload your clips, describe your event, get a finished video ready to post.
-        </p>
-        <div className="flex gap-4 justify-center">
-          <Link
-            href="/auth/signup"
-            className="bg-violet-600 hover:bg-violet-500 rounded-xl px-8 py-3 font-semibold transition"
-          >
-            Get Started
-          </Link>
-          <Link
-            href="/auth/login"
-            className="border border-zinc-600 hover:border-zinc-400 rounded-xl px-8 py-3 font-semibold transition"
-          >
-            Log In
-          </Link>
-        </div>
-      </div>
-    </main>
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "Flicko",
+            applicationCategory: "MultimediaApplication",
+            operatingSystem: "Web",
+            description:
+              "AI video editor that makes every creative editing decision a world-class editor would — and explains exactly why.",
+            offers: [
+              { "@type": "Offer", price: "0", priceCurrency: "USD", name: "Free" },
+              { "@type": "Offer", price: "10", priceCurrency: "USD", name: "Starter" },
+              { "@type": "Offer", price: "15", priceCurrency: "USD", name: "Pro" },
+            ],
+          }),
+        }}
+      />
+      <LandingPageContent />
+    </>
   );
 }
