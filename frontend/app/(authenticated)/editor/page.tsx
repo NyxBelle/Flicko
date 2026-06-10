@@ -153,7 +153,7 @@ export default function EditorPage() {
         {/* Upload */}
         <section>
           <SectionLabel>Your footage</SectionLabel>
-          <VideoUploadZone files={files} onChange={setFiles} maxFiles={10} />
+          <VideoUploadZone files={files} onChange={setFiles} maxFiles={25} />
         </section>
 
         {/* Title */}

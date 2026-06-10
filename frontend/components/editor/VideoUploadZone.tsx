@@ -19,7 +19,7 @@ interface VideoUploadZoneProps {
 
 export type { UploadedFile };
 
-export default function VideoUploadZone({ files, onChange, maxFiles = 10 }: VideoUploadZoneProps) {
+export default function VideoUploadZone({ files, onChange, maxFiles = 25 }: VideoUploadZoneProps) {
   const [error, setError] = useState<string | null>(null);
 
   const onDrop = useCallback(

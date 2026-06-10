@@ -25,57 +25,56 @@ export interface FlickoVideoProps {
   captionStyle: string;
   transitionType: string;
   hookText?: string;
+  captionColor?: string;
   width: number;
   height: number;
 }
 
 const TRANSITION_FRAMES = 9; // 0.3s at 30fps
-const HOOK_DURATION = 75; // 2.5s
-const HOOK_FADE_OUT = 15; // 0.5s fade at the end
+const HOOK_DURATION = 75;    // 2.5s
+const HOOK_FADE_OUT = 15;    // 0.5s
 
-const CAPTION_STYLES: Record<
-  string,
-  {bottom: number | string; style: React.CSSProperties}
-> = {
-  bold_center: {
-    bottom: '42%',
-    style: {
-      fontSize: 68,
-      fontWeight: 900,
-      color: 'white',
-      textShadow: '3px 3px 8px rgba(0,0,0,0.95)',
-    },
-  },
-  viral_highlight: {
-    bottom: '38%',
-    style: {
-      fontSize: 72,
-      fontWeight: 900,
-      color: '#FFE066',
-      textShadow: '0 0 20px rgba(255,180,0,0.7)',
-    },
-  },
-  minimal_bottom: {
-    bottom: 80,
-    style: {
-      fontSize: 44,
-      fontWeight: 600,
-      color: 'white',
-      textShadow: '1px 1px 3px rgba(0,0,0,0.8)',
-    },
-  },
-  professional: {
-    bottom: 100,
-    style: {
-      fontSize: 40,
-      fontWeight: 500,
-      color: 'white',
-      background: 'rgba(0,0,0,0.55)',
-      padding: '8px 20px',
-      borderRadius: 8,
-    },
-  },
-};
+function getCaptionStyle(
+  style: string,
+  color: string,
+): {bottom: number | string; textStyle: React.CSSProperties} {
+  const shadow = `3px 3px 10px rgba(0,0,0,0.95)`;
+  switch (style) {
+    case 'viral_highlight':
+      return {
+        bottom: '38%',
+        textStyle: {
+          fontSize: 72,
+          fontWeight: 900,
+          color,
+          textShadow: `0 0 22px rgba(0,0,0,0.6), ${shadow}`,
+        },
+      };
+    case 'minimal_bottom':
+      return {
+        bottom: 80,
+        textStyle: {fontSize: 44, fontWeight: 600, color, textShadow: shadow},
+      };
+    case 'professional':
+      return {
+        bottom: 100,
+        textStyle: {
+          fontSize: 40,
+          fontWeight: 500,
+          color: '#FFFFFF',
+          background: 'rgba(0,0,0,0.6)',
+          padding: '8px 20px',
+          borderRadius: 8,
+        },
+      };
+    case 'bold_center':
+    default:
+      return {
+        bottom: '42%',
+        textStyle: {fontSize: 68, fontWeight: 900, color, textShadow: shadow},
+      };
+  }
+}
 
 export const FlickoVideo: React.FC<FlickoVideoProps> = ({
   clips,
@@ -83,6 +82,7 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
   captionStyle,
   transitionType,
   hookText,
+  captionColor = '#FFFFFF',
 }) => {
   const frame = useCurrentFrame();
 
@@ -93,13 +93,14 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
     return {clip, start};
   });
 
-  // Hook overlay opacity: fade in over 10 frames, hold, fade out over last 15 frames
   const hookOpacity =
     hookText && frame < HOOK_DURATION
-      ? interpolate(frame, [0, 10, HOOK_DURATION - HOOK_FADE_OUT, HOOK_DURATION], [0, 1, 1, 0], {
-          extrapolateLeft: 'clamp',
-          extrapolateRight: 'clamp',
-        })
+      ? interpolate(
+          frame,
+          [0, 10, HOOK_DURATION - HOOK_FADE_OUT, HOOK_DURATION],
+          [0, 1, 1, 0],
+          {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'},
+        )
       : 0;
 
   const hookScale =
@@ -142,10 +143,7 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
         return (
           <Sequence key={i} from={start} durationInFrames={clip.durationInFrames}>
             <AbsoluteFill
-              style={{
-                opacity,
-                transform: `translateX(${translateX}%) scale(${scale})`,
-              }}
+              style={{opacity, transform: `translateX(${translateX}%) scale(${scale})`}}
             >
               <OffthreadVideo
                 src={staticFile(clip.name)}
@@ -160,15 +158,11 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
       {captionStyle !== 'none' &&
         captions.map((cap, i) => {
           if (frame < cap.startFrame || frame > cap.endFrame) return null;
-          const cs = CAPTION_STYLES[captionStyle] ?? CAPTION_STYLES.minimal_bottom;
-          // Pop-in: scale from 0.8 → 1.04 → 1 over 10 frames
+          const {bottom, textStyle} = getCaptionStyle(captionStyle, captionColor);
           const capAge = frame - cap.startFrame;
-          const popScale = interpolate(
-            capAge,
-            [0, 6, 10],
-            [0.8, 1.04, 1],
-            {extrapolateRight: 'clamp'},
-          );
+          const popScale = interpolate(capAge, [0, 6, 10], [0.8, 1.04, 1], {
+            extrapolateRight: 'clamp',
+          });
           const capOpacity = interpolate(capAge, [0, 5], [0, 1], {extrapolateRight: 'clamp'});
           return (
             <div
@@ -177,7 +171,7 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
                 position: 'absolute',
                 left: 0,
                 right: 0,
-                bottom: cs.bottom,
+                bottom,
                 display: 'flex',
                 justifyContent: 'center',
                 padding: '0 6%',
@@ -191,7 +185,7 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
                   maxWidth: '88%',
                   opacity: capOpacity,
                   transform: `scale(${popScale})`,
-                  ...cs.style,
+                  ...textStyle,
                 }}
               >
                 {cap.text}
@@ -200,7 +194,7 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
           );
         })}
 
-      {/* Hook text overlay — shown for the first ~2.5s */}
+      {/* Hook overlay — first 2.5s */}
       {hookText && hookOpacity > 0 && (
         <div
           style={{
@@ -219,8 +213,8 @@ export const FlickoVideo: React.FC<FlickoVideoProps> = ({
               fontFamily: '"Arial Black", Impact, sans-serif',
               fontSize: 58,
               fontWeight: 900,
-              color: '#FFE066',
-              textShadow: '3px 3px 14px rgba(0,0,0,0.95)',
+              color: captionColor,
+              textShadow: `3px 3px 14px rgba(0,0,0,0.95)`,
               textAlign: 'center',
               maxWidth: '90%',
               opacity: hookOpacity,

@@ -59,6 +59,8 @@ class EditDecision(BaseModel):
     energy_arc: Optional[str] = None
     suggested_title: Optional[str] = None
     hook_text: Optional[str] = None
+    mute_original: bool = False
+    caption_color: Optional[str] = None
 
 
 class RenderRequest(BaseModel):
@@ -318,6 +320,7 @@ def _run_remotion(
         "captionStyle": ed.caption_style,
         "transitionType": ed.transition_type,
         "hookText": ed.hook_text or ed.suggested_title or "",
+        "captionColor": ed.caption_color or "#FFFFFF",
         "width": 1080 if is_vertical else 1920,
         "height": 1920 if is_vertical else 1080,
     }
@@ -472,7 +475,13 @@ def _do_render(
             music_path = _get_music_track(supabase_url, supabase_key, ed.energy_level)
             if music_path:
                 mixed = os.path.join(work, "final_mixed.mp4")
-                if _mix_music(final, music_path, mixed):
+                if ed.mute_original:
+                    # Chaotic footage: silence original, music at full volume
+                    success = _mix_music(final, music_path, mixed, voice_vol=0.0, music_vol=1.0)
+                    print("[worker] Chaotic footage — original audio muted, music at 100%")
+                else:
+                    success = _mix_music(final, music_path, mixed, voice_vol=0.55, music_vol=0.22)
+                if success:
                     final = mixed
                     print("[worker] Background music mixed in")
                 try:
@@ -609,15 +618,29 @@ PLATFORM TARGETS
 - LinkedIn: 45–90s
 
 AUDIO TREATMENT RULES — what to write in "audio_treatment":
-  "trending_sound"  → background music overlaid (DEFAULT for TikTok/Reels/Shorts energy content)
-  "keep_original"   → preserve raw footage audio only (when dialogue/natural sound IS the content)
+  "trending_sound"  → add background music (DEFAULT for TikTok/Reels/Shorts)
+  "keep_original"   → keep raw audio only (when dialogue/natural sound IS the content)
   "voiceover"       → AI voice narration (only when has_voice_clone=Yes)
-  If USER'S AUDIO PREFERENCE is "flicko_decides": YOU choose. Default to "trending_sound" for vertical/entertainment content. Use "keep_original" only when the original audio is irreplaceable (interviews, comedy timing, etc).
+  If USER'S AUDIO PREFERENCE is "flicko_decides": YOU decide. Default "trending_sound" for vertical/entertainment content.
   If USER'S AUDIO PREFERENCE is "trending_sound": ALWAYS return "trending_sound".
-  NEVER return "no_voiceover" or any other value not in the list above.
+  NEVER return "no_voiceover" or any value not in the list above.
+
+MUTE ORIGINAL AUDIO — set "mute_original": true ONLY when:
+  - The source footage audio is chaotic, incoherent, or adds no value (e.g. background noise, loud crowd, pointless ambient sound)
+  - The footage clearly has no narrative or dialogue worth keeping
+  When mute_original is true, the original audio is silenced completely and music plays at full volume.
+  When false (default), music is mixed under the original audio.
 
 HOOK TEXT
-Write a punchy 4–7 word overlay caption for the first 2 seconds. It should hook the viewer before they can scroll. Examples: "Wait till the end...", "This changed everything", "Nobody talks about this". No hashtags, no emojis.
+Write a punchy 4–7 word overlay shown at the start. Hook the viewer before they scroll. Examples: "Wait till the end...", "This changed everything", "Nobody talks about this". No hashtags, no emojis.
+
+CAPTION COLOR — pick ONE hex color that matches this video's energy and vibe.
+  High energy / hype:      #FFE500 (yellow), #FF6B35 (orange), #FF1744 (red)
+  Fun / comedy:            #7CFC00 (lime), #FF69B4 (pink), #00FF87 (mint)
+  Tech / informational:    #00D4FF (cyan), #9B59B6 (purple)
+  Clean / professional:    #FFFFFF (white)
+  Dramatic / intense:      #FF1744 (red), #FF8C00 (deep orange)
+  Choose the single color that best fits the specific content. Never default to white unless the content is genuinely formal.
 
 Return ONLY a valid JSON object, no markdown:
 {
@@ -625,7 +648,9 @@ Return ONLY a valid JSON object, no markdown:
   "pacing": "fast",
   "transition_type": "cut",
   "audio_treatment": "trending_sound",
+  "mute_original": false,
   "caption_style": "bold_center",
+  "caption_color": "#FF6B35",
   "energy_level": 4,
   "hook_moment": 0.0,
   "hook_text": "Wait till you see this",

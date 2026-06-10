@@ -8,6 +8,7 @@ const defaultProps: FlickoVideoProps = {
   captionStyle: 'bold_center',
   transitionType: 'cut',
   hookText: '',
+  captionColor: '#FFFFFF',
   width: 1080,
   height: 1920,
 };
