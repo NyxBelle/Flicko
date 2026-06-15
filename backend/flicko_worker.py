@@ -785,11 +785,28 @@ def _make_edit_decision(
     audio_preference: str,
     duration_seconds: float,
     has_voice_clone: bool,
+    creator_patterns: Optional[list] = None,
 ) -> dict:
     try:
         import anthropic as _anthropic
     except ImportError:
         raise RuntimeError("Install: pip install anthropic")
+
+    system_prompt = _EDITOR_SYSTEM_PROMPT
+    if creator_patterns:
+        lines = "\n".join(
+            f"  - {p['pattern_text']} [confidence: {round(p['confidence'] * 100)}%]"
+            for p in creator_patterns
+        )
+        system_prompt += (
+            "\n═══════════════════════════════════════════\n"
+            "  WHAT HAS WORKED FOR THIS CREATOR BEFORE\n"
+            "═══════════════════════════════════════════\n"
+            "Based on their past edits and real performance data, these patterns have emerged:\n"
+            f"{lines}\n\n"
+            "Use these as directional signals — they reflect what's actually resonated with this creator's audience. "
+            "Lean into them where the content supports it, but always let the material guide the final cut."
+        )
 
     client = _anthropic.Anthropic(api_key=api_key)
     user_msg = (
@@ -805,7 +822,7 @@ def _make_edit_decision(
     msg = client.messages.create(
         model="claude-opus-4-7",
         max_tokens=2048,
-        system=_EDITOR_SYSTEM_PROMPT,
+        system=system_prompt,
         messages=[{"role": "user", "content": user_msg}],
     )
     import re
@@ -817,6 +834,12 @@ def _make_edit_decision(
 
 
 # ─── Full pipeline endpoint (all stages on Railway) ───────────────────────────
+
+class CreatorPattern(BaseModel):
+    pattern_text: str
+    confidence: float
+    pattern_category: str
+
 
 class ProcessRequest(BaseModel):
     video_urls: List[str]
@@ -830,6 +853,7 @@ class ProcessRequest(BaseModel):
     supabase_service_key: str
     anthropic_api_key: Optional[str] = None
     has_voice_clone: bool = False
+    creator_patterns: Optional[List[CreatorPattern]] = None
 
 
 def _do_process(job_id: str, req: ProcessRequest) -> None:
@@ -885,6 +909,7 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
         if not anthropic_key:
             raise RuntimeError("ANTHROPIC_API_KEY not set on worker")
 
+        patterns_payload = [p.dict() for p in req.creator_patterns] if req.creator_patterns else None
         decision_dict = _make_edit_decision(
             api_key=anthropic_key,
             transcript=transcript_text,
@@ -894,6 +919,7 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
             audio_preference=req.audio_preference,
             duration_seconds=total_dur,
             has_voice_clone=req.has_voice_clone,
+            creator_patterns=patterns_payload,
         )
         _update_project(sb_url, sb_key, pid, {"edit_decisions": decision_dict})
 

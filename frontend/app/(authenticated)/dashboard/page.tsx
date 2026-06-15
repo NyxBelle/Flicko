@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Play } from "lucide-react";
-import type { Project, Profile } from "@/types";
+import type { Project, Profile, CreatorPattern } from "@/types";
 import { formatRelativeTime } from "@/lib/utils";
 import { TIER_LIMITS } from "@/types";
 import PaymentSuccessToast from "@/components/dashboard/PaymentSuccessToast";
@@ -123,9 +123,73 @@ function StatsStrip({ editsThisMonth, editsLeft, tier }: { editsThisMonth: numbe
   );
 }
 
+function LearningCard({ patterns }: { patterns: CreatorPattern[] }) {
+  if (patterns.length === 0) return null;
+
+  const categoryIcon: Record<string, string> = {
+    hook_style: "⚡", pacing: "⏱", length: "📏", tone: "🎭",
+    platform: "📱", audio: "🎵", caption: "💬",
+  };
+
+  return (
+    <div style={{
+      border: "1px solid var(--line)",
+      borderRadius: 16,
+      overflow: "hidden",
+      marginBottom: 20,
+    }}>
+      <div style={{
+        padding: "16px 22px",
+        borderBottom: "1px solid var(--line)",
+        background: "var(--paper-2)",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      }}>
+        <div style={{
+          width: 30, height: 30, borderRadius: 8,
+          background: "var(--accent)", color: "#fff",
+          display: "grid", placeItems: "center", fontSize: 14, flexShrink: 0,
+        }}>
+          ✦
+        </div>
+        <div>
+          <div style={{ fontSize: 14.5, fontWeight: 600, color: "var(--ink)" }}>Flicko is learning your style</div>
+          <div style={{ fontSize: 12, color: "var(--faint)", fontFamily: "var(--font-mono), monospace", letterSpacing: "0.05em" }}>
+            Based on {patterns[0]?.based_on_clips_count ?? "your"} clips with performance data
+          </div>
+        </div>
+      </div>
+      <div style={{ padding: "14px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {patterns.map((p) => (
+          <div key={p.id} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>
+              {categoryIcon[p.pattern_category] ?? "◆"}
+            </span>
+            <p style={{ margin: 0, fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+              {p.pattern_text}
+            </p>
+            {p.confidence >= 0.75 && (
+              <span style={{
+                marginLeft: "auto", flexShrink: 0,
+                fontFamily: "var(--font-mono), monospace",
+                fontSize: 9.5, letterSpacing: "0.1em",
+                color: "var(--accent-ink)", textTransform: "uppercase",
+              }}>
+                strong
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [patterns, setPatterns] = useState<CreatorPattern[]>([]);
   const [editsUsed, setEditsUsed] = useState(0);
   const [filter, setFilter] = useState<FilterTab>("All");
   const [greeting, setGreeting] = useState("Good day");
@@ -139,13 +203,15 @@ export default function DashboardPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const [{ data: proj }, { data: prof }] = await Promise.all([
+      const [{ data: proj }, { data: prof }, { data: pats }] = await Promise.all([
         supabase.from("projects").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(20),
         supabase.from("profiles").select("*").eq("id", user.id).single(),
+        supabase.from("creator_patterns").select("*").eq("user_id", user.id).order("confidence", { ascending: false }).limit(4),
       ]);
 
       setProjects(proj as Project[] | null);
       setProfile(prof as Profile | null);
+      setPatterns((pats as CreatorPattern[] | null) ?? []);
 
       const tier = (prof as Profile | null)?.tier ?? "free";
       const limits = TIER_LIMITS[tier];
@@ -201,6 +267,9 @@ export default function DashboardPage() {
 
       {/* Stats strip */}
       <StatsStrip editsThisMonth={editsUsed} editsLeft={editsLeft} tier={tier} />
+
+      {/* Learning card — only shown when patterns exist */}
+      <LearningCard patterns={patterns} />
 
       {/* New-edit noir banner */}
       <Link

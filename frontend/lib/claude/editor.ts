@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createClient } from "@supabase/supabase-js";
 import type { EditDecision, TargetPlatform, AudioTreatment } from "@/types";
 
 const client = new Anthropic({
@@ -127,6 +128,38 @@ SPEED per segment: 0.5 (slow-mo) | 1.0 (normal) | 2.0 (double speed)
 
 If the user's audio preference conflicts with the content, use your judgment and note the override in the rationale.`;
 
+async function getCreatorPatternContext(userId: string): Promise<string> {
+  try {
+    const db = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } },
+    );
+    const { data: patterns } = await db
+      .from("creator_patterns")
+      .select("pattern_text, confidence")
+      .eq("user_id", userId)
+      .order("confidence", { ascending: false })
+      .limit(4);
+
+    if (!patterns || patterns.length === 0) return "";
+
+    const lines = patterns
+      .map((p: { pattern_text: string; confidence: number }) => `  - ${p.pattern_text} [confidence: ${Math.round(p.confidence * 100)}%]`)
+      .join("\n");
+
+    return `\n═══════════════════════════════════════════
+  WHAT HAS WORKED FOR THIS CREATOR BEFORE
+═══════════════════════════════════════════
+Based on their past edits and real performance data, these patterns have emerged:
+${lines}
+
+Use these as directional signals — they reflect what's actually resonated with this creator's audience. Lean into them where the content supports it, but always let the material guide the final cut.`;
+  } catch {
+    return "";
+  }
+}
+
 interface OpenShortsClip {
   clip_index: number;
   start: number;
@@ -143,9 +176,14 @@ interface EditorInput {
   videoDurationSeconds: number;
   hasVoiceClone: boolean;
   openShortsClips?: OpenShortsClip[];
+  userId?: string;
 }
 
 export async function makeEditDecision(input: EditorInput): Promise<EditDecision> {
+  // Inject creator pattern context if this user has performance history
+  const patternContext = input.userId ? await getCreatorPatternContext(input.userId) : "";
+  const systemPrompt = patternContext ? SYSTEM_PROMPT + patternContext : SYSTEM_PROMPT;
+
   // Build OpenShorts clip section if face-tracked clips are available
   let clipsSection = "";
   if (input.openShortsClips && input.openShortsClips.length > 0) {
@@ -182,7 +220,7 @@ Make your creative editing decisions now. Return only valid JSON.`;
   const message = await client.messages.create({
     model: "claude-opus-4-7",
     max_tokens: 2048,
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages: [
       {
         role: "user",

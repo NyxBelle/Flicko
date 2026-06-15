@@ -190,6 +190,62 @@ create trigger usage_counters_updated_at
   for each row execute procedure public.set_updated_at();
 
 -- ============================================================
+-- CLIP PERFORMANCE
+-- ============================================================
+create table if not exists public.clip_performance (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  project_id  uuid not null references public.projects(id) on delete cascade,
+  clip_id     text not null default 'final',
+  views       integer not null default 0,
+  likes       integer not null default 0,
+  shares      integer not null default 0,
+  comments    integer not null default 0,
+  platform    text not null check (platform in ('tiktok', 'reels', 'shorts', 'linkedin', 'youtube')),
+  reported_at timestamptz not null default now(),
+  created_at  timestamptz not null default now()
+);
+
+alter table public.clip_performance enable row level security;
+
+create policy "Users can read own clip performance"
+  on public.clip_performance for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert own clip performance"
+  on public.clip_performance for insert
+  with check (auth.uid() = user_id);
+
+create index if not exists clip_performance_user_id_idx on public.clip_performance(user_id);
+create index if not exists clip_performance_project_id_idx on public.clip_performance(project_id);
+
+-- ============================================================
+-- CREATOR PATTERNS
+-- ============================================================
+create table if not exists public.creator_patterns (
+  id                   uuid primary key default gen_random_uuid(),
+  user_id              uuid not null references public.profiles(id) on delete cascade,
+  pattern_text         text not null,
+  pattern_category     text not null check (pattern_category in ('hook_style', 'pacing', 'length', 'tone', 'platform', 'audio', 'caption')),
+  confidence           numeric(3,2) not null check (confidence >= 0 and confidence <= 1),
+  based_on_clips_count integer not null default 0,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+alter table public.creator_patterns enable row level security;
+
+create policy "Users can read own patterns"
+  on public.creator_patterns for select
+  using (auth.uid() = user_id);
+
+create index if not exists creator_patterns_user_id_idx on public.creator_patterns(user_id);
+
+create trigger creator_patterns_updated_at
+  before update on public.creator_patterns
+  for each row execute procedure public.set_updated_at();
+
+-- ============================================================
 -- STORAGE BUCKETS
 -- (Run these in Supabase dashboard or via their API — SQL editor doesn't support storage commands)
 --

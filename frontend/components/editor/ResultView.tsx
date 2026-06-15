@@ -394,6 +394,141 @@ export interface AdjustPayload {
   pacing?: EditDecision["pacing"];
 }
 
+// ── Performance tracker ───────────────────────────────────────────────────────
+
+type PerfState = "idle" | "open" | "submitting" | "done" | "dismissed";
+
+function PerformanceTracker({ projectId, defaultPlatform }: { projectId: string; defaultPlatform: string }) {
+  const [state, setState] = useState<PerfState>("idle");
+  const [views, setViews]       = useState("");
+  const [likes, setLikes]       = useState("");
+  const [shares, setShares]     = useState("");
+  const [comments, setComments] = useState("");
+  const [platform, setPlatform] = useState(defaultPlatform);
+
+  if (state === "dismissed") return null;
+
+  if (state === "done") {
+    return (
+      <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "var(--accent-soft)", border: "1px solid color-mix(in oklab,var(--accent),#fff 60%)", borderRadius: 12 }}>
+        <Icon name="check" size={14} />
+        <span style={{ fontSize: 13, color: "var(--accent-ink)", fontWeight: 500 }}>Performance logged — Flicko is learning from this.</span>
+      </div>
+    );
+  }
+
+  const fieldStyle: React.CSSProperties = {
+    width: "100%", padding: "8px 10px", borderRadius: 8,
+    border: "1px solid var(--line-2)", background: "var(--paper)",
+    fontFamily: "var(--font-sans), system-ui, sans-serif",
+    fontSize: 13, color: "var(--ink)", outline: "none",
+  };
+
+  const handleSubmit = async () => {
+    setState("submitting");
+    try {
+      await fetch("/api/projects/performance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, views, likes, shares, comments, platform }),
+      });
+      setState("done");
+    } catch {
+      setState("open");
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 16, border: "1px solid var(--line)", borderRadius: 16, overflow: "hidden" }}>
+      <div
+        style={{
+          padding: "13px 18px",
+          background: "var(--paper-2)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          cursor: state === "idle" ? "pointer" : "default",
+        }}
+        onClick={() => state === "idle" && setState("open")}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <Icon name="trend" size={15} />
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>How did this clip perform?</span>
+          <span style={{ fontSize: 12, color: "var(--faint)", fontFamily: "var(--font-mono), monospace", letterSpacing: "0.04em" }}>optional</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {state === "idle" && (
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>Tap to log →</span>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); setState("dismissed"); }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--faint)", padding: 2, display: "grid", placeItems: "center" }}
+            aria-label="Dismiss"
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+      </div>
+
+      {(state === "open" || state === "submitting") && (
+        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
+            After posting, come back and log the numbers. Flicko uses this to make better decisions for you over time.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {[
+              { label: "Views", value: views, set: setViews },
+              { label: "Likes", value: likes, set: setLikes },
+              { label: "Shares", value: shares, set: setShares },
+              { label: "Comments", value: comments, set: setComments },
+            ].map(({ label, value, set }) => (
+              <div key={label}>
+                <label style={{ display: "block", fontSize: 11, color: "var(--faint)", fontFamily: "var(--font-mono), monospace", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>{label}</label>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={value}
+                  onChange={(e) => set(e.target.value)}
+                  style={fieldStyle}
+                />
+              </div>
+            ))}
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: 11, color: "var(--faint)", fontFamily: "var(--font-mono), monospace", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>Platform posted on</label>
+            <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={{ ...fieldStyle, cursor: "pointer" }}>
+              {["tiktok", "reels", "shorts", "linkedin", "youtube"].map((p) => (
+                <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleSubmit}
+            disabled={state === "submitting"}
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: "10px 18px", borderRadius: 999,
+              background: state === "submitting" ? "var(--paper-2)" : "var(--accent)",
+              color: state === "submitting" ? "var(--faint)" : "#fff",
+              border: "none", cursor: state === "submitting" ? "default" : "pointer",
+              fontSize: 13, fontWeight: 600,
+              fontFamily: "var(--font-sans), system-ui, sans-serif",
+              transition: "all .15s",
+            }}
+          >
+            {state === "submitting" ? (
+              <><span className="spin" style={{ width: 13, height: 13, border: "2px solid var(--line-2)", borderTopColor: "var(--accent)", borderRadius: 99, display: "inline-block" }} /> Saving…</>
+            ) : (
+              <><Icon name="trend" size={13} /> Log performance</>
+            )}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ResultViewProps {
   project: { id: string; desired_outcome: string; target_platform: string; edit_decisions: EditDecision };
   videoSrc: string | null;
@@ -562,8 +697,13 @@ export function ResultView({ project, videoSrc, recutting = false, onAdjust, onD
             {player(300)}
             {summaryChips}
           </div>
-          {/* Right: rationale */}
-          <div>{rationaleCard}</div>
+          {/* Right: rationale + performance tracker */}
+          <div>
+            {rationaleCard}
+            {!recutting && (
+              <PerformanceTracker projectId={project.id} defaultPlatform={project.target_platform} />
+            )}
+          </div>
         </div>
       </div>
 
@@ -572,7 +712,12 @@ export function ResultView({ project, videoSrc, recutting = false, onAdjust, onD
         <div style={{ marginBottom: 20 }}>{heading}</div>
         <div style={{ display: "flex", justifyContent: "center", margin: "0 0 4px" }}>{player(196)}</div>
         <div style={{ display: "flex", justifyContent: "center" }}>{summaryChips}</div>
-        <div style={{ marginTop: 22 }}>{rationaleCard}</div>
+        <div style={{ marginTop: 22 }}>
+          {rationaleCard}
+          {!recutting && (
+            <PerformanceTracker projectId={project.id} defaultPlatform={project.target_platform} />
+          )}
+        </div>
 
         {/* Pinned bottom action bar */}
         <div style={{ position: "sticky", bottom: 0, zIndex: 30, marginInline: -18, marginTop: 18, padding: "12px 18px 26px", background: "rgba(247,245,239,0.94)", backdropFilter: "saturate(140%) blur(14px)", borderTop: "1px solid var(--line)", display: "flex", gap: 10 }}>

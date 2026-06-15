@@ -39,6 +39,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: usageCheck.reason, upgradeRequired: true }, { status: 402 });
     }
 
+    // Fetch creator patterns to give the worker learning context
+    const { data: creatorPatterns } = await serviceClient()
+      .from("creator_patterns")
+      .select("pattern_text, confidence, pattern_category")
+      .eq("user_id", user.id)
+      .order("confidence", { ascending: false })
+      .limit(4);
+
     // Generate 7-hour signed URLs for the worker
     const videoSignedUrls: string[] = [];
     for (const path of p.video_urls) {
@@ -72,6 +80,7 @@ export async function POST(req: NextRequest) {
         supabase_service_key: process.env.SUPABASE_SERVICE_ROLE_KEY,
         anthropic_api_key:    process.env.ANTHROPIC_API_KEY,
         has_voice_clone:      false,
+        creator_patterns:     creatorPatterns ?? [],
       }),
       signal: AbortSignal.timeout(15_000),
     });

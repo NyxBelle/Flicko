@@ -132,6 +132,31 @@ export const PLATFORM_LABELS: Record<TargetPlatform, string> = {
   youtube: "YouTube",
 };
 
+export interface ClipPerformance {
+  id: string;
+  user_id: string;
+  project_id: string;
+  clip_id: string;
+  views: number;
+  likes: number;
+  shares: number;
+  comments: number;
+  platform: TargetPlatform;
+  reported_at: string;
+  created_at: string;
+}
+
+export interface CreatorPattern {
+  id: string;
+  user_id: string;
+  pattern_text: string;
+  pattern_category: "hook_style" | "pacing" | "length" | "tone" | "platform" | "audio" | "caption";
+  confidence: number;
+  based_on_clips_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export const PLATFORM_ASPECT_RATIOS: Record<TargetPlatform, string> = {
   tiktok: "9:16",
   reels: "9:16",
