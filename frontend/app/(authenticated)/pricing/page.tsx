@@ -36,19 +36,19 @@ const PLANS = [
 const FAQS = [
   {
     q: "Does Flicko really make editorial judgment calls?",
-    a: "Yes — Flicko uses Claude to analyse your footage, understand your goal, and make the same creative decisions a skilled human editor would: what to cut, where to start, how to pace, what audio serves the content. It then explains each decision in plain language.",
+    a: "Yes. Flicko analyses your footage, understands your goal, and makes the same creative decisions a skilled human editor would: what to cut, where to start, how to pace, what audio serves the content. It then explains each decision in plain language.",
   },
   {
     q: "How does voice cloning work?",
-    a: "On Pro you upload a 30–60 second sample of your voice. Flicko trains a personal model and uses it to narrate edits in your voice — synced to the content, in your tone. Your voice data never leaves our infrastructure.",
+    a: "On Pro you upload a 30 to 60 second sample of your voice. Flicko trains a personal model and uses it to narrate edits in your voice, synced to the content, in your tone. Your voice data never leaves our infrastructure.",
   },
   {
     q: "What do I get on the Free plan?",
-    a: "Two lifetime edits, full Flicko AI decisions, captions, transitions, and trending sound overlay. No credit card required. It's a real edit — not a watermarked preview.",
+    a: "Two lifetime edits, full Flicko decisions, captions, transitions, and trending sound overlay. No credit card required. It's a real edit, not a watermarked preview.",
   },
   {
     q: "Can I ask Flicko to reconsider a decision?",
-    a: "Yes. Every edit comes with a decision rationale. You can request adjustments on individual decisions — Flicko re-evaluates with your feedback while keeping the rest of the edit intact.",
+    a: "Yes. Every edit comes with a decision rationale. You can request adjustments on individual decisions and Flicko re-evaluates with your feedback while keeping the rest of the edit intact.",
   },
 ];
 
@@ -122,7 +122,7 @@ export default function PricingPage() {
           Less than <em className="serif-i" style={{ color: "var(--accent)" }}>one</em> freelance edit.
         </h1>
         <p style={{ fontSize: 17, color: "var(--muted)", lineHeight: 1.6 }}>
-          Freelance editors charge $50–200 per video. Flicko delivers the same creative judgment — AI-powered, explained, and post-ready — for the price of a coffee a week.
+          Freelance editors charge $50 to $200 per video. Flicko delivers the same creative judgment, explained and post-ready, for the price of a coffee a week.
         </p>
       </div>
 

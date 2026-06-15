@@ -277,7 +277,7 @@ function HeroPreview() {
               </div>
               <p style={{ margin: 0, fontSize: 12.5, color: C.muted, lineHeight: 1.45 }}>
                 <strong style={{ color: C.ink, fontWeight: 700 }}>I killed the first 4 seconds.</strong>{" "}
-                Your hook was buried — it opens cold on it now.
+                Your hook was buried. It opens cold on it now.
               </p>
             </div>
           </div>
@@ -328,12 +328,12 @@ function Hero() {
             <h1 className="l-display" style={{ fontSize: "clamp(46px, 6.4vw, 92px)", marginTop: 0, color: C.ink }}>
               Your footage,<br />
               edited the way a<br />
-              <em style={{ fontStyle: "italic" }}>great human</em> would.
+              <em style={{ fontStyle: "italic" }}>great editor</em> would.
             </h1>
 
             <p style={{ fontSize: "clamp(17px, 1.4vw, 20px)", color: C.muted, maxWidth: 480, marginTop: 26, marginBottom: 0, lineHeight: 1.5 }}>
-              Not clips. Not a template. A real edit — every cut, caption and beat decided by an
-              AI that reads <strong style={{ color: C.ink, fontWeight: 600 }}>your</strong> video,
+              Not clips. Not a template. A real edit, every cut, caption and beat decided by
+              flicko that reads <strong style={{ color: C.ink, fontWeight: 600 }}>your</strong> video,
               then tells you exactly why.
             </p>
 
@@ -346,6 +346,9 @@ function Hero() {
 
             <p style={{ fontFamily: "var(--font-mono-l)", fontSize: 12, color: C.faint, marginTop: 18, letterSpacing: "0.04em" }}>
               2 FREE EDITS · NO CARD · POST-READY IN MINUTES
+            </p>
+            <p style={{ fontFamily: "var(--font-mono-l)", fontSize: 11, color: C.faint, marginTop: 8, letterSpacing: "0.04em" }}>
+              IN TESTING WITH CREATORS ACROSS LAGOS, ACCRA AND NAIROBI
             </p>
           </div>
 
@@ -382,9 +385,9 @@ function PlatformStrip() {
 
 /* ── How it works ───────────────────────────────────────────── */
 const HOW_STEPS = [
-  { n: "01", title: "Upload", body: "Drop your raw footage — phone clips, long takes, B-roll, whatever you shot. Up to 4K.", Icon: IconUpload },
+  { n: "01", title: "Upload", body: "Drop your raw footage: phone clips, long takes, B-roll, whatever you shot. Up to 4K.", Icon: IconUpload },
   { n: "02", title: "Describe", body: "Tell Flicko what it is and what you want it to do. A sentence is enough.", Icon: IconSpark },
-  { n: "03", title: "Receive", body: "Get back a finished, post-ready cut — with a written rationale for every decision.", Icon: IconDownload },
+  { n: "03", title: "Receive", body: "Get back a finished, post-ready cut, with a written rationale for every decision.", Icon: IconDownload },
 ];
 
 function HowItWorks() {
@@ -438,7 +441,7 @@ const DIFF_COLS = [
       "Reads the context of this specific video",
       "Finds your hook and builds the edit around it",
       "Chooses captions & sound that fit the energy",
-      "Hands back a finished cut — and its reasoning",
+      "Hands back a finished cut, with its reasoning",
     ],
   },
 ];
@@ -495,7 +498,7 @@ function Differentiator() {
 const FEATURES = [
   { Icon: IconScissors, title: "Decisive cutting", body: "Finds the moments that matter and paces them to hold a feed scroll." },
   { Icon: IconFrame, title: "Smart reframing", body: "Reframes to 9:16, 1:1 or 16:9 and tracks your subject through every move." },
-  { Icon: IconMic, title: "Voice cloning", body: "Voiceovers in your own cloned voice — no studio, no re-records.", pro: true },
+  { Icon: IconMic, title: "Voice cloning", body: "Voiceovers in your own cloned voice. No studio, no re-records.", pro: true },
   { Icon: IconCaptions, title: "Captions with taste", body: "Caption styles matched to the energy of your content, synced to the word." },
   { Icon: IconWave, title: "Sound that's trending", body: "Drops the right viral sound under the right moment, ducked under your voice." },
   { Icon: IconEye, title: "Shows its reasoning", body: "Every edit comes with a creative rationale, in plain language you can argue with." },
@@ -508,7 +511,7 @@ function Features() {
         <Reveal>
           <div className="l-eyebrow" style={{ marginBottom: 14 }}>What it does</div>
           <h2 className="l-display" style={{ fontSize: "clamp(34px, 4.4vw, 60px)", maxWidth: 700, marginBottom: 52, color: C.ink }}>
-            The work of a full <em style={{ fontStyle: "italic" }}>edit suite</em> — and an editor with taste.
+            The work of a full <em style={{ fontStyle: "italic" }}>edit suite</em>, built with taste.
           </h2>
         </Reveal>
 
@@ -552,9 +555,9 @@ function Features() {
 
 /* ── Pricing teaser ─────────────────────────────────────────── */
 const TIERS = [
-  { name: "Free",    price: "$0",  note: "2 trial edits", feats: ["Full creative edits", "Rationale included", "720p export"],          cta: "Start free",      href: "/signup",   accent: false },
-  { name: "Starter", price: "$10", note: "per month",     feats: ["10 edits / month", "1080p export", "All caption styles"],            cta: "Choose Starter",  href: "/pricing",  accent: false },
-  { name: "Pro",     price: "$15", note: "per month",     feats: ["Everything in Starter", "Voice cloning", "4K · priority renders"],   cta: "Go Pro",          href: "/pricing",  accent: true  },
+  { name: "Free",    price: "$0",  note: "forever",    feats: ["2 lifetime edits", "Full creative edit", "All platforms"],          cta: "Start free",     href: "/signup",  accent: false },
+  { name: "Starter", price: "$10", note: "per month",  feats: ["10 edits / month", "All caption styles", "Priority processing"],    cta: "Choose Starter", href: "/pricing", accent: false },
+  { name: "Pro",     price: "$15", note: "per month",  feats: ["50 edits / month", "Voice cloning", "Priority processing"],         cta: "Go Pro",         href: "/pricing", accent: true  },
 ];
 
 function PricingTeaser() {
@@ -636,6 +639,78 @@ function PricingTeaser() {
   );
 }
 
+/* ── Landing FAQ ────────────────────────────────────────────── */
+const LANDING_FAQS = [
+  {
+    q: "Does Flicko keep my footage after the edit?",
+    a: "No. Your files are processed and deleted as soon as your edit is complete. We never store your footage or use it for anything beyond the edit you requested.",
+  },
+  {
+    q: "How long does an edit take?",
+    a: "Most edits complete in 3 to 8 minutes, depending on footage length. You can see the status update in real time on your project page.",
+  },
+  {
+    q: "Can I cancel anytime?",
+    a: "Yes. No contracts, no lock-in. Cancel from your account settings and you keep access until the end of your billing period.",
+  },
+  {
+    q: "How does voice cloning work?",
+    a: "On the Pro plan, upload a 30 to 60 second voice sample. Flicko generates a personal voice model and uses it to narrate edits in your tone. Your voice data stays within our infrastructure and is never shared.",
+  },
+];
+
+function LandingFAQ() {
+  const [faqOpen, setFaqOpen] = useState<number | null>(null);
+  return (
+    <section style={{ paddingTop: 90, paddingBottom: 90, background: C.paper }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto", paddingInline: "clamp(20px, 5vw, 72px)" }}>
+        <Reveal>
+          <div style={{ marginBottom: 48 }}>
+            <div className="l-eyebrow" style={{ marginBottom: 14 }}>Questions</div>
+            <h2 className="l-display" style={{ fontSize: "clamp(34px, 4.4vw, 60px)", color: C.ink }}>
+              Before you sign up.
+            </h2>
+          </div>
+        </Reveal>
+        <div style={{ maxWidth: 760 }}>
+          {LANDING_FAQS.map((faq, i) => (
+            <Reveal key={faq.q} delay={i * 0.05}>
+              <div style={{ borderBottom: `1px solid ${C.line}`, paddingTop: 18 }}>
+                <button
+                  type="button"
+                  onClick={() => setFaqOpen(faqOpen === i ? null : i)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                    background: "none", border: "none", cursor: "pointer", textAlign: "left",
+                    paddingBottom: 18, gap: 16,
+                  }}
+                >
+                  <span style={{ fontSize: "clamp(15px, 2vw, 18px)", fontWeight: 600, color: C.ink, letterSpacing: "-0.01em" }}>
+                    {faq.q}
+                  </span>
+                  <svg
+                    width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={C.muted}
+                    strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"
+                    style={{ flexShrink: 0, transform: faqOpen === i ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                <div style={{
+                  overflow: "hidden", maxHeight: faqOpen === i ? 300 : 0,
+                  transition: "max-height 0.3s cubic-bezier(.2,.7,.2,1)",
+                }}>
+                  <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.65, paddingBottom: 20 }}>{faq.a}</p>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ── Final CTA ──────────────────────────────────────────────── */
 function FinalCTA() {
   return (
@@ -678,16 +753,21 @@ function FinalCTA() {
 
 /* ── Footer ─────────────────────────────────────────────────── */
 const FOOTER_COLS = [
-  { heading: "Product",   links: [{ label: "The editor", href: "/editor" }, { label: "How it works", href: "#how" }, { label: "Pricing", href: "/pricing" }, { label: "Voice cloning", href: "/voice" }] },
-  { heading: "Company",   links: [{ label: "About", href: "/" }, { label: "Creators", href: "/" }, { label: "Careers", href: "/" }, { label: "Press", href: "/" }] },
-  { heading: "Resources", links: [{ label: "Help center", href: "/" }, { label: "Community", href: "/" }, { label: "Status", href: "/" }, { label: "Changelog", href: "/" }] },
+  { heading: "Product", links: [
+    { label: "How it works", href: "#how" },
+    { label: "Pricing",      href: "/pricing" },
+  ]},
+  { heading: "Legal", links: [
+    { label: "Privacy", href: "/privacy" },
+    { label: "Terms",   href: "/terms" },
+  ]},
 ];
 
 function LandingFooter() {
   return (
     <footer className="l-grain" style={{ position: "relative", background: C.noir, color: C.noirText, overflow: "hidden" }}>
       <div style={{ maxWidth: 1280, margin: "0 auto", paddingInline: "clamp(20px, 5vw, 72px)", paddingTop: 88, paddingBottom: 40 }}>
-        <div className="l-footer-grid" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 40 }}>
+        <div className="l-footer-grid" style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 1fr", gap: 40 }}>
           <div>
             <Link href="/" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -727,11 +807,15 @@ function LandingFooter() {
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <span style={{ fontFamily: "var(--font-mono-l)", fontSize: 12.5, color: C.noirMuted, letterSpacing: "0.04em" }}>
-            © 2026 FLICKO — MADE FOR CREATORS
+            © 2026 FLICKO · MADE FOR CREATORS
           </span>
-          <div style={{ display: "flex", gap: 24 }}>
-            {["Privacy", "Terms", "Cookies"].map((label) => (
-              <Link key={label} href="/" className="l-footer-link"
+          <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+            <a href="mailto:support@flicko.app" className="l-footer-link"
+              style={{ fontFamily: "var(--font-mono-l)", fontSize: 12.5, color: C.noirMuted, letterSpacing: "0.04em", textDecoration: "none" }}>
+              SUPPORT
+            </a>
+            {[{ label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }].map(({ label, href }) => (
+              <Link key={label} href={href} className="l-footer-link"
                 style={{ fontFamily: "var(--font-mono-l)", fontSize: 12.5, color: C.noirMuted, letterSpacing: "0.04em", textDecoration: "none" }}>
                 {label.toUpperCase()}
               </Link>
@@ -754,6 +838,7 @@ export function LandingPageContent() {
       <Differentiator />
       <Features />
       <PricingTeaser />
+      <LandingFAQ />
       <FinalCTA />
       <LandingFooter />
     </div>
