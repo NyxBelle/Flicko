@@ -303,84 +303,68 @@ def _group_to_phrase_captions(words: list, fps: int = 30, max_words: int = 4) ->
     return captions
 
 
-def _get_music_track_pixabay(api_key: str, energy_level: int, platform: str) -> Optional[str]:
-    """Fetch a royalty-free track from Pixabay Music API matched to energy level."""
+def _get_music_track_mubert(pat: str, energy_level: int, duration_s: float, platform: str) -> Optional[str]:
+    """
+    Generate a royalty-free AI music track via Mubert, matched to energy/platform/duration.
+    Sign up at mubert.com → Dashboard → copy your PAT token.
+    Set MUBERT_PAT on Railway worker to activate.
+    """
     import random
 
-    # Map energy level → genre + mood + search term
-    if energy_level >= 4:
-        genre = "electronic"
-        mood = "happy"
-        q = "upbeat energetic"
-    elif energy_level == 3:
-        genre = "pop"
-        mood = "happy"
-        q = "upbeat catchy"
-    elif energy_level == 2:
-        genre = "pop"
-        mood = "neutral"
-        q = "chill background"
-    else:
-        genre = "ambient"
-        mood = "calm"
-        q = "calm background"
-
-    # LinkedIn → lean more cinematic/professional
+    # Map energy + platform → Mubert mood
     if platform in ("linkedin", "youtube"):
-        genre = "cinematic"
-        mood = "neutral"
-        q = "background corporate"
+        mood = "Atmospheric"
+    elif energy_level >= 4:
+        mood = random.choice(["Energetic", "Anthemic", "Funky"])
+    elif energy_level == 3:
+        mood = random.choice(["Groovy", "Funky"])
+    elif energy_level == 2:
+        mood = random.choice(["Dreamy", "Groovy"])
+    else:
+        mood = random.choice(["Peaceful", "Dreamy"])
+
+    # Clamp to Mubert's supported range (15–300s)
+    track_duration = max(15, min(int(duration_s) if duration_s else 30, 300))
 
     try:
-        r = requests.get(
-            "https://pixabay.com/api/music/",
-            params={
-                "key": api_key,
-                "q": q,
-                "genre": genre,
-                "mood": mood,
-                "order": "popular",
-                "per_page": 20,
+        r = requests.post(
+            "https://api.mubert.com/v2/TrackForUser",
+            json={
+                "method": "TrackForUser",
+                "params": {
+                    "pat": pat,
+                    "duration": track_duration,
+                    "mood": mood,
+                    "format": "mp3-hq",
+                    "license": "taf",  # "taf" = creator use; upgrade to "com" on Mubert Business plan
+                },
             },
-            timeout=20,
+            timeout=60,
         )
         r.raise_for_status()
-        hits = r.json().get("hits", [])
+        data = r.json()
 
-        # Retry without genre/mood filter if no results
-        if not hits:
-            r2 = requests.get(
-                "https://pixabay.com/api/music/",
-                params={"key": api_key, "q": q, "order": "popular", "per_page": 20},
-                timeout=20,
-            )
-            r2.raise_for_status()
-            hits = r2.json().get("hits", [])
-
-        if not hits:
-            print("[music] Pixabay returned no tracks for this query")
+        if data.get("status") != 200:
+            print(f"[music] Mubert error: {data.get('message', data)}")
             return None
 
-        chosen = random.choice(hits[:10])
+        tasks = data.get("data", {}).get("tasks", [])
+        if not tasks:
+            print("[music] Mubert returned no tasks")
+            return None
 
-        # Pixabay returns the audio URL nested under "audio.url" or flat "audioUrl"
-        audio_url = (
-            chosen.get("audio", {}).get("url")
-            or chosen.get("audioUrl")
-            or chosen.get("url")
-            or ""
-        )
-        if not audio_url:
-            print("[music] Pixabay hit missing audio URL")
+        download_url = tasks[0].get("download_link", "")
+        if not download_url:
+            print("[music] Mubert task missing download_link")
             return None
 
         tmp = tempfile.mktemp(suffix=".mp3")
-        _download(audio_url, tmp)
-        print(f"[music] Pixabay track: \"{chosen.get('title', 'untitled')}\" ({chosen.get('duration', '?')}s)")
+        _download(download_url, tmp)
+        print(f"[music] Mubert: {mood}, {track_duration}s")
         return tmp
 
     except Exception as e:
-        print(f"[music] Pixabay fetch failed: {e}")
+        print(f"[music] Mubert failed: {e}")
         return None
 
 
@@ -430,14 +414,17 @@ def _get_music_track_supabase(supabase_url: str, key: str, energy_level: int) ->
         return None
 
 
-def _get_music_track(supabase_url: str, key: str, energy_level: int, platform: str = "") -> Optional[str]:
-    """Get a background music track. Tries Pixabay first, falls back to Supabase bucket."""
-    pixabay_key = os.getenv("PIXABAY_API_KEY", "")
-    if pixabay_key:
-        track = _get_music_track_pixabay(pixabay_key, energy_level, platform)
+def _get_music_track(supabase_url: str, key: str, energy_level: int, platform: str = "", duration_s: float = 30.0) -> Optional[str]:
+    """
+    Get a background music track.
+    Priority: Mubert API (if MUBERT_PAT set) → Supabase 'music' bucket (self-hosted tracks).
+    """
+    mubert_pat = os.getenv("MUBERT_PAT", "")
+    if mubert_pat:
+        track = _get_music_track_mubert(mubert_pat, energy_level, duration_s, platform)
         if track:
             return track
-        print("[music] Pixabay failed, trying Supabase bucket fallback...")
+        print("[music] Mubert failed, trying Supabase bucket fallback...")
     return _get_music_track_supabase(supabase_url, key, energy_level)
 
 
@@ -659,7 +646,8 @@ def _do_render(
 
         # 4b. Mix background music when requested
         if ed.audio_treatment in ("trending_sound", "flicko_decides"):
-            music_path = _get_music_track(supabase_url, supabase_key, ed.energy_level, platform)
+            output_duration = sum(ext_durs)
+            music_path = _get_music_track(supabase_url, supabase_key, ed.energy_level, platform, duration_s=output_duration)
             if music_path:
                 mixed = os.path.join(work, "final_mixed.mp4")
                 if ed.mute_original:
