@@ -210,9 +210,91 @@ def _group_to_phrase_captions(words: list, fps: int = 30, max_words: int = 4) ->
     return captions
 
 
-def _get_music_track(supabase_url: str, key: str, energy_level: int) -> Optional[str]:
-    """Fetches a music track from the Supabase 'music' bucket. Returns local .mp3 path or None."""
+def _get_music_track_pixabay(api_key: str, energy_level: int, platform: str) -> Optional[str]:
+    """Fetch a royalty-free track from Pixabay Music API matched to energy level."""
+    import random
+
+    # Map energy level → genre + mood + search term
+    if energy_level >= 4:
+        genre = "electronic"
+        mood = "happy"
+        q = "upbeat energetic"
+    elif energy_level == 3:
+        genre = "pop"
+        mood = "happy"
+        q = "upbeat catchy"
+    elif energy_level == 2:
+        genre = "pop"
+        mood = "neutral"
+        q = "chill background"
+    else:
+        genre = "ambient"
+        mood = "calm"
+        q = "calm background"
+
+    # LinkedIn → lean more cinematic/professional
+    if platform in ("linkedin", "youtube"):
+        genre = "cinematic"
+        mood = "neutral"
+        q = "background corporate"
+
     try:
+        r = requests.get(
+            "https://pixabay.com/api/music/",
+            params={
+                "key": api_key,
+                "q": q,
+                "genre": genre,
+                "mood": mood,
+                "order": "popular",
+                "per_page": 20,
+            },
+            timeout=20,
+        )
+        r.raise_for_status()
+        hits = r.json().get("hits", [])
+
+        # Retry without genre/mood filter if no results
+        if not hits:
+            r2 = requests.get(
+                "https://pixabay.com/api/music/",
+                params={"key": api_key, "q": q, "order": "popular", "per_page": 20},
+                timeout=20,
+            )
+            r2.raise_for_status()
+            hits = r2.json().get("hits", [])
+
+        if not hits:
+            print("[music] Pixabay returned no tracks for this query")
+            return None
+
+        chosen = random.choice(hits[:10])
+
+        # Pixabay returns the audio URL nested under "audio.url" or flat "audioUrl"
+        audio_url = (
+            chosen.get("audio", {}).get("url")
+            or chosen.get("audioUrl")
+            or chosen.get("url")
+            or ""
+        )
+        if not audio_url:
+            print("[music] Pixabay hit missing audio URL")
+            return None
+
+        tmp = tempfile.mktemp(suffix=".mp3")
+        _download(audio_url, tmp)
+        print(f"[music] Pixabay track: \"{chosen.get('title', 'untitled')}\" ({chosen.get('duration', '?')}s)")
+        return tmp
+
+    except Exception as e:
+        print(f"[music] Pixabay fetch failed: {e}")
+        return None
+
+
+def _get_music_track_supabase(supabase_url: str, key: str, energy_level: int) -> Optional[str]:
+    """Fallback: fetch a track from the Supabase 'music' bucket."""
+    try:
+        import random
         r = requests.post(
             f"{supabase_url}/storage/v1/object/list/music",
             headers={"Authorization": f"Bearer {key}", "apikey": key, "Content-Type": "application/json"},
@@ -220,21 +302,18 @@ def _get_music_track(supabase_url: str, key: str, energy_level: int) -> Optional
             timeout=10,
         )
         if not r.ok:
-            print(f"[music] Could not list music bucket ({r.status_code}) — add mp3 files to Supabase 'music' bucket to enable background music")
+            print(f"[music] Supabase music bucket unavailable ({r.status_code})")
             return None
         files = [f for f in r.json() if isinstance(f, dict) and f.get("name", "").lower().endswith(".mp3")]
         if not files:
-            print("[music] No .mp3 files in Supabase 'music' bucket — skipping background music")
+            print("[music] No .mp3 files in Supabase 'music' bucket")
             return None
 
-        import random
-        # Prefer tracks whose name contains the energy tier
         tier = "high" if energy_level >= 4 else ("medium" if energy_level >= 2 else "low")
         matching = [f for f in files if tier in f["name"].lower()]
         chosen = random.choice(matching if matching else files)
         track_name = chosen["name"]
 
-        # Get signed URL
         r2 = requests.post(
             f"{supabase_url}/storage/v1/object/sign/music/{track_name}",
             headers={"Authorization": f"Bearer {key}", "apikey": key, "Content-Type": "application/json"},
@@ -251,11 +330,22 @@ def _get_music_track(supabase_url: str, key: str, energy_level: int) -> Optional
 
         tmp = tempfile.mktemp(suffix=".mp3")
         _download(full_url, tmp)
-        print(f"[music] Downloaded track: {track_name}")
+        print(f"[music] Supabase track: {track_name}")
         return tmp
     except Exception as e:
-        print(f"[music] Failed to fetch track: {e}")
+        print(f"[music] Supabase fallback failed: {e}")
         return None
+
+
+def _get_music_track(supabase_url: str, key: str, energy_level: int, platform: str = "") -> Optional[str]:
+    """Get a background music track. Tries Pixabay first, falls back to Supabase bucket."""
+    pixabay_key = os.getenv("PIXABAY_API_KEY", "")
+    if pixabay_key:
+        track = _get_music_track_pixabay(pixabay_key, energy_level, platform)
+        if track:
+            return track
+        print("[music] Pixabay failed, trying Supabase bucket fallback...")
+    return _get_music_track_supabase(supabase_url, key, energy_level)
 
 
 def _mix_music(video_path: str, music_path: str, out_path: str, voice_vol: float = 0.55, music_vol: float = 0.22) -> bool:
@@ -472,7 +562,7 @@ def _do_render(
 
         # 4b. Mix background music when requested
         if ed.audio_treatment in ("trending_sound", "flicko_decides"):
-            music_path = _get_music_track(supabase_url, supabase_key, ed.energy_level)
+            music_path = _get_music_track(supabase_url, supabase_key, ed.energy_level, platform)
             if music_path:
                 mixed = os.path.join(work, "final_mixed.mp4")
                 if ed.mute_original:
