@@ -39,12 +39,10 @@ export async function POST(req: NextRequest) {
     if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
     const p = project as Project;
-
     if (!p.edit_decisions) {
       return NextResponse.json({ error: "No edit decisions to adjust" }, { status: 400 });
     }
 
-    // Generate fresh signed URLs for source videos
     const videoSignedUrls: string[] = [];
     for (const path of p.video_urls) {
       const { data: signed } = await supabase.storage
@@ -62,98 +60,47 @@ export async function POST(req: NextRequest) {
       ...changes,
     };
 
-    // Fire-and-forget — client polls for status changes
-    reRender(p, user.id, updatedDecision, videoSignedUrls).catch(async (err) => {
-      console.error("[adjust] Re-render failed:", err);
-      await serviceClient()
-        .from("projects")
-        .update({ status: "failed", error_message: (err as Error).message })
-        .eq("id", projectId);
-    });
+    const db = serviceClient();
 
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    console.error("[adjust route]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
-}
-
-async function reRender(
-  project: Project,
-  userId: string,
-  decision: EditDecision,
-  videoUrls: string[],
-): Promise<void> {
-  const db = serviceClient();
-
-  // Persist updated decision + reset to rendering state
-  await db
-    .from("projects")
-    .update({
-      edit_decisions: decision as unknown as Record<string, unknown>,
+    // Persist updated decision + set status to rendering immediately
+    await db.from("projects").update({
+      edit_decisions: updatedDecision as unknown as Record<string, unknown>,
       status: "rendering",
       render_url: null,
-    })
-    .eq("id", project.id);
+    }).eq("id", projectId);
 
-  // Kick off the worker render directly (skip transcription + Claude)
-  let renderRes: Response;
-  try {
-    renderRes = await fetch(`${WORKER_URL}/render`, {
+    // Fire render to worker — worker updates Supabase directly on completion.
+    // Client-side polling in project/[id]/page.tsx handles the rest.
+    // We do NOT poll here — that caused 40-minute Vercel serverless timeouts.
+    const renderRes = await fetch(`${WORKER_URL}/render`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${WORKER_KEY}`,
       },
       body: JSON.stringify({
-        video_urls:           videoUrls,
-        edit_decision:        decision,
-        target_platform:      project.target_platform,
-        project_id:           project.id,
-        user_id:              userId,
+        video_urls:           videoSignedUrls,
+        edit_decision:        updatedDecision,
+        target_platform:      p.target_platform,
+        project_id:           projectId,
+        user_id:              user.id,
         supabase_url:         process.env.NEXT_PUBLIC_SUPABASE_URL,
         supabase_service_key: process.env.SUPABASE_SERVICE_ROLE_KEY,
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(15_000),
     });
-  } catch (err) {
-    const msg = (err as Error).name === "TimeoutError"
-      ? "Worker did not respond in time."
-      : "Could not reach the processing worker.";
-    throw new Error(msg);
-  }
 
-  if (!renderRes.ok) throw new Error(`Render failed: ${await renderRes.text()}`);
-
-  const { job_id } = await renderRes.json() as { job_id: string };
-
-  // Poll for completion (40-minute hard cap, same as process route)
-  for (let i = 0; i < 480; i++) {
-    await sleep(5000);
-    const pollRes = await fetch(`${WORKER_URL}/render/${job_id}`, {
-      headers: { Authorization: `Bearer ${WORKER_KEY}` },
-    });
-    if (!pollRes.ok) throw new Error(`Poll failed: ${pollRes.status}`);
-
-    const data = await pollRes.json() as {
-      status: string;
-      output_url?: string;
-      error?: string;
-    };
-
-    if (data.status === "done" && data.output_url) {
-      await db
-        .from("projects")
-        .update({ status: "done", render_url: data.output_url })
-        .eq("id", project.id);
-      return;
+    if (!renderRes.ok) {
+      const errText = await renderRes.text();
+      await db.from("projects")
+        .update({ status: "failed", error_message: `Worker error: ${errText.slice(0, 300)}` })
+        .eq("id", projectId);
+      return NextResponse.json({ error: "Worker failed to start render" }, { status: 500 });
     }
-    if (data.status === "failed") throw new Error(data.error ?? "Render failed");
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[adjust route]", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-
-  throw new Error("Re-render timed out after 40 minutes");
-}
-
-function sleep(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms));
 }

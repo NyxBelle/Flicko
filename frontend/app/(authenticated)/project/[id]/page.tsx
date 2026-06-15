@@ -130,7 +130,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     const supabase = createClient();
     const { data: signed } = await supabase.storage
       .from("renders")
-      .createSignedUrl(renderPath, 3600);
+      .createSignedUrl(renderPath, 86400); // 24-hour TTL
     if (signed?.signedUrl) setSignedUrl(signed.signedUrl);
   };
 

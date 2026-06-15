@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-export async function proxy(request: NextRequest) {
-  // Skip session refresh if Supabase isn't configured yet
+export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -24,17 +23,17 @@ export async function proxy(request: NextRequest) {
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value }) =>
-          request.cookies.set(name, value)
+          request.cookies.set(name, value),
         );
         supabaseResponse = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options)
+          supabaseResponse.cookies.set(name, value, options),
         );
       },
     },
   });
 
-  // Refresh session tokens — required by @supabase/ssr
+  // Refresh session tokens — required by @supabase/ssr to keep JWTs alive
   await supabase.auth.getUser();
 
   return supabaseResponse;

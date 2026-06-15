@@ -11,6 +11,7 @@ Run:
 """
 
 import os, uuid, json, tempfile, shutil, subprocess, threading, traceback, time, platform
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
 import requests
@@ -18,8 +19,45 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-app = FastAPI(title="Flicko Worker", version="3.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Sentry — initialise only when DSN is provided.
+# Add SENTRY_DSN to Railway worker env vars to activate.
+# Get DSN from sentry.io → your project → Settings → Client Keys.
+_SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.starlette import StarletteIntegration
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            integrations=[StarletteIntegration(), FastApiIntegration()],
+            traces_sample_rate=0.2,
+            environment=os.getenv("RAILWAY_ENVIRONMENT", "production"),
+        )
+        print("[sentry] Initialized")
+    except ImportError:
+        print("[sentry] sentry-sdk not installed — add sentry-sdk[fastapi] to requirements.worker.txt")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Kick off zombie recovery in a daemon thread so it doesn't block startup
+    t = threading.Thread(target=_recover_stuck_projects, daemon=True)
+    t.start()
+    yield
+
+
+app = FastAPI(title="Flicko Worker", version="3.0.0", lifespan=lifespan)
+
+# Restrict to the frontend origin. Set ALLOWED_ORIGIN in Railway env vars.
+# Falls back to "*" only when unset (local dev). Never leave unset in production.
+_ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "*")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[_ALLOWED_ORIGIN],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 _IS_WINDOWS = platform.system() == "Windows"
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL", "base")
@@ -30,6 +68,61 @@ USE_REMOTION = os.getenv("USE_REMOTION", "false").lower() == "true"
 
 _jobs: dict = {}
 _whisper_model = None
+
+STUCK_STATUSES = ("transcribing", "analyzing", "deciding", "editing", "rendering")
+STUCK_TIMEOUT_MINUTES = 60
+
+
+def _recover_stuck_projects() -> None:
+    """
+    On startup, find any projects that were left in a non-terminal status
+    (e.g. because the worker restarted mid-render) and mark them failed
+    so users see a retry option instead of an infinite spinner.
+    Runs once in a background thread at startup, then every 30 minutes.
+    """
+    # Worker may receive Supabase creds via env vars under either name
+    sb_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
+    sb_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not sb_url or not sb_key:
+        print("[recovery] SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set — skipping recovery")
+        return
+
+    import datetime
+    cutoff = (
+        datetime.datetime.utcnow() - datetime.timedelta(minutes=STUCK_TIMEOUT_MINUTES)
+    ).isoformat() + "Z"
+
+    try:
+        url = f"{sb_url}/rest/v1/projects"
+        params = (
+            "status=in.(transcribing,analyzing,deciding,editing,rendering)"
+            f"&updated_at=lt.{cutoff}"
+        )
+        r = requests.patch(
+            f"{url}?{params}",
+            headers={
+                "apikey": sb_key,
+                "Authorization": f"Bearer {sb_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json={
+                "status": "failed",
+                "error_message": "Render timed out — the worker restarted. Please retry.",
+            },
+            timeout=10,
+        )
+        if r.status_code in (200, 204):
+            print(f"[recovery] Cleared stuck projects older than {STUCK_TIMEOUT_MINUTES}m")
+        else:
+            print(f"[recovery] Patch returned {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        print(f"[recovery] Failed: {e}")
+
+    # Reschedule every 30 minutes
+    t = threading.Timer(1800, _recover_stuck_projects)
+    t.daemon = True
+    t.start()
 
 
 # ─── Pydantic models ──────────────────────────────────────────────────────────
@@ -485,9 +578,13 @@ def _do_render(
     supabase_key: str,
     tx_words: Optional[list],
 ):
+    """
+    Renders a video and writes the final status directly to Supabase.
+    Raises an exception on failure so callers can handle it.
+    No longer depends on _jobs dict for cross-request state.
+    """
     work = None
     try:
-        _jobs[job_id]["status"] = "processing"
         work = tempfile.mkdtemp(prefix=f"flicko_{project_id[:8]}_")
 
         # 1. Download source videos
@@ -583,11 +680,16 @@ def _do_render(
         dest_path = f"{user_id}/{project_id}/output_{job_id[:8]}.mp4"
         _upload_supabase(final, supabase_url, supabase_key, dest_path)
 
-        _jobs[job_id].update({"status": "done", "output_url": dest_path, "renderer": renderer_used})
+        # Write completion directly to Supabase — no in-memory state needed
+        _update_project(supabase_url, supabase_key, project_id, {
+            "status": "done",
+            "render_url": dest_path,
+        })
+        print(f"[flicko-worker] render {job_id} done → {dest_path} (renderer: {renderer_used})")
 
     except Exception as exc:
-        _jobs[job_id].update({"status": "failed", "error": str(exc)})
         print(f"[flicko-worker] render {job_id} failed:\n{traceback.format_exc()}")
+        raise  # let caller write the failed status
     finally:
         if work and os.path.exists(work):
             shutil.rmtree(work, ignore_errors=True)
@@ -603,7 +705,7 @@ def health():
         "whisper_model": WHISPER_MODEL_SIZE,
         "whisper_status": "loaded" if _whisper_model else "loads on first transcription",
         "remotion": "ready" if remotion_ready else "run: cd backend/renderer && npm install",
-        "active_jobs": len([j for j in _jobs.values() if j["status"] == "processing"]),
+        "active_threads": threading.active_count(),
     }
 
 
@@ -653,25 +755,34 @@ def transcribe(req: TranscribeRequest):
 @app.post("/render")
 def render(req: RenderRequest):
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "pending", "output_url": None, "error": None}
 
-    threading.Thread(
-        target=_do_render,
-        args=(job_id, req.video_urls, req.edit_decision, req.target_platform,
-              req.project_id, req.user_id, req.supabase_url, req.supabase_service_key,
-              req.transcript_words or None),
-        daemon=True,
-    ).start()
+    def _run():
+        try:
+            _do_render(
+                job_id,
+                req.video_urls,
+                req.edit_decision,
+                req.target_platform,
+                req.project_id,
+                req.user_id,
+                req.supabase_url,
+                req.supabase_service_key,
+                req.transcript_words or None,
+            )
+        except Exception as exc:
+            _update_project(req.supabase_url, req.supabase_service_key, req.project_id, {
+                "status": "failed",
+                "error_message": str(exc),
+            })
 
-    return {"job_id": job_id}
+    threading.Thread(target=_run, daemon=True).start()
+    return {"job_id": job_id, "ok": True}
 
 
 @app.get("/render/{job_id}")
 def get_render(job_id: str):
-    job = _jobs.get(job_id)
-    if not job:
-        raise HTTPException(404, "Job not found")
-    return job
+    # This endpoint is deprecated — status is now read directly from Supabase projects table.
+    raise HTTPException(410, "Poll project status via Supabase, not this endpoint")
 
 
 # ─── Editor system prompt ─────────────────────────────────────────────────────
@@ -928,9 +1039,9 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
         ed = EditDecision(**decision_dict)
 
         render_job_id = str(uuid.uuid4())
-        _jobs[render_job_id] = {"status": "pending"}
         status("rendering")
 
+        # _do_render raises on failure and writes "done" to Supabase on success
         _do_render(
             render_job_id,
             req.video_urls,
@@ -943,12 +1054,6 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
             transcript_words,
         )
 
-        result = _jobs.get(render_job_id, {})
-        if result.get("status") == "done":
-            status("done", {"render_url": result["output_url"]})
-        else:
-            raise RuntimeError(result.get("error") or "Render failed")
-
     except Exception as exc:
         print(f"[process] {pid} failed:\n{traceback.format_exc()}")
         _update_project(sb_url, sb_key, pid, {"status": "failed", "error_message": str(exc)})
@@ -960,7 +1065,6 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
 @app.post("/process")
 def process_video(req: ProcessRequest):
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "started"}
     threading.Thread(target=_do_process, args=(job_id, req), daemon=True).start()
     return {"ok": True, "job_id": job_id}
 

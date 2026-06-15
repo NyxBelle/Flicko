@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceSupabase } from "@supabase/supabase-js";
 import { checkAndIncrementUsage } from "@/lib/usage";
+import { rateLimit } from "@/lib/rate-limit";
 import type { Project } from "@/types";
 
 const WORKER_URL = process.env.OPENSHORTS_SERVICE_URL!;
@@ -16,6 +17,9 @@ function serviceClient() {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = await rateLimit(req, { limit: 5, windowSecs: 60, prefix: "process" });
+  if (!rl.allowed) return rl.response!;
+
   try {
     const supabase = await createServerClient();
     const { data: { user } } = await supabase.auth.getUser();

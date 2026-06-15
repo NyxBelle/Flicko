@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { reportClipPerformance } from "@/lib/projects.functions";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
+  const rl = await rateLimit(req, { limit: 15, windowSecs: 60, prefix: "perf" });
+  if (!rl.allowed) return rl.response!;
+
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
