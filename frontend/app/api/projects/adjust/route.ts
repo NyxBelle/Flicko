@@ -29,19 +29,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const { data: project } = await supabase
-      .from("projects")
-      .select("*")
-      .eq("id", projectId)
-      .eq("user_id", user.id)
-      .single();
+    const db = serviceClient();
+
+    const [{ data: project }, { data: profile }] = await Promise.all([
+      supabase.from("projects").select("*").eq("id", projectId).eq("user_id", user.id).single(),
+      db.from("profiles").select("tier").eq("id", user.id).single(),
+    ]);
 
     if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    const userTier: string = (profile as { tier?: string } | null)?.tier ?? "free";
 
     const p = project as Project;
-    if (!p.edit_decisions) {
-      return NextResponse.json({ error: "No edit decisions to adjust" }, { status: 400 });
-    }
+    if (!p.edit_decisions) return NextResponse.json({ error: "No edit decisions to adjust" }, { status: 400 });
 
     const videoSignedUrls: string[] = [];
     for (const path of p.video_urls) {
@@ -59,8 +58,6 @@ export async function POST(req: NextRequest) {
       ...(p.edit_decisions as EditDecision),
       ...changes,
     };
-
-    const db = serviceClient();
 
     // Persist updated decision + set status to rendering immediately
     await db.from("projects").update({
@@ -86,6 +83,7 @@ export async function POST(req: NextRequest) {
         user_id:              user.id,
         supabase_url:         process.env.NEXT_PUBLIC_SUPABASE_URL,
         supabase_service_key: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        user_tier:            userTier,
       }),
       signal: AbortSignal.timeout(15_000),
     });

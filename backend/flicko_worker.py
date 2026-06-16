@@ -165,6 +165,7 @@ class RenderRequest(BaseModel):
     supabase_url: str
     supabase_service_key: str
     transcript_words: Optional[List[dict]] = None
+    user_tier: str = "free"
 
 
 # ─── Utilities ────────────────────────────────────────────────────────────────
@@ -303,68 +304,65 @@ def _group_to_phrase_captions(words: list, fps: int = 30, max_words: int = 4) ->
     return captions
 
 
-def _get_music_track_mubert(pat: str, energy_level: int, duration_s: float, platform: str) -> Optional[str]:
+def _get_music_track_jamendo(client_id: str, energy_level: int, platform: str) -> Optional[str]:
     """
-    Generate a royalty-free AI music track via Mubert, matched to energy/platform/duration.
-    Sign up at mubert.com → Dashboard → copy your PAT token.
-    Set MUBERT_PAT on Railway worker to activate.
+    Fetch a royalty-free track from Jamendo matched to energy level + platform.
+    Register at devportal.jamendo.com → create an app → copy the client_id.
+    Set JAMENDO_CLIENT_ID on Railway worker to activate.
+    Note: commercial SaaS use requires a Jamendo licensing agreement.
     """
     import random
 
-    # Map energy + platform → Mubert mood
+    # Map energy + platform → Jamendo tag query
     if platform in ("linkedin", "youtube"):
-        mood = "Atmospheric"
+        tags = "corporate"
     elif energy_level >= 4:
-        mood = random.choice(["Energetic", "Anthemic", "Funky"])
+        tags = "energetic electronic"
     elif energy_level == 3:
-        mood = random.choice(["Groovy", "Funky"])
+        tags = "upbeat pop"
     elif energy_level == 2:
-        mood = random.choice(["Dreamy", "Groovy"])
+        tags = "chill"
     else:
-        mood = random.choice(["Peaceful", "Dreamy"])
+        tags = "ambient"
 
-    # Clamp to Mubert's supported range (15–300s)
-    track_duration = max(15, min(int(duration_s) if duration_s else 30, 300))
-
-    try:
-        r = requests.post(
-            "https://api.mubert.com/v2/TrackForUser",
-            json={
-                "method": "TrackForUser",
-                "params": {
-                    "pat": pat,
-                    "duration": track_duration,
-                    "mood": mood,
-                    "format": "mp3-hq",
-                    "license": "taf",  # "taf" = creator use; upgrade to "com" on Mubert Business plan
-                },
-            },
-            timeout=60,
-        )
+    def _fetch(extra_params: dict) -> list:
+        base = {
+            "client_id":    client_id,
+            "format":       "json",
+            "limit":        20,
+            "audioformat":  "mp32",
+            "audiodlformat": "mp32",
+            "order":        "popularity_total",
+        }
+        base.update(extra_params)
+        r = requests.get("https://api.jamendo.com/v3.0/tracks/", params=base, timeout=20)
         r.raise_for_status()
         data = r.json()
+        if data.get("headers", {}).get("code") != 0:
+            print(f"[music] Jamendo API error: {data.get('headers', {}).get('error_message')}")
+            return []
+        return [t for t in data.get("results", [])
+                if t.get("audiodownload_allowed") and t.get("audiodownload")]
 
-        if data.get("status") != 200:
-            print(f"[music] Mubert error: {data.get('message', data)}")
+    try:
+        results = _fetch({"tags": tags})
+        if not results:
+            # Retry without tag filter
+            results = _fetch({})
+        if not results:
+            print("[music] Jamendo returned no downloadable tracks")
             return None
 
-        tasks = data.get("data", {}).get("tasks", [])
-        if not tasks:
-            print("[music] Mubert returned no tasks")
-            return None
-
-        download_url = tasks[0].get("download_link", "")
-        if not download_url:
-            print("[music] Mubert task missing download_link")
-            return None
+        chosen = random.choice(results[:10])
+        audio_url = chosen["audiodownload"]
 
         tmp = tempfile.mktemp(suffix=".mp3")
-        _download(download_url, tmp)
-        print(f"[music] Mubert: {mood}, {track_duration}s")
+        _download(audio_url, tmp)
+        print(f"[music] Jamendo: \"{chosen.get('name', '?')}\" by {chosen.get('artist_name', '?')}")
         return tmp
 
     except Exception as e:
-        print(f"[music] Mubert failed: {e}")
+        print(f"[music] Jamendo failed: {e}")
         return None
 
 
@@ -417,15 +415,42 @@ def _get_music_track_supabase(supabase_url: str, key: str, energy_level: int) ->
 def _get_music_track(supabase_url: str, key: str, energy_level: int, platform: str = "", duration_s: float = 30.0) -> Optional[str]:
     """
     Get a background music track.
-    Priority: Mubert API (if MUBERT_PAT set) → Supabase 'music' bucket (self-hosted tracks).
+    Priority: Jamendo API (if JAMENDO_CLIENT_ID set) → Supabase 'music' bucket (self-hosted MP3s).
     """
-    mubert_pat = os.getenv("MUBERT_PAT", "")
-    if mubert_pat:
-        track = _get_music_track_mubert(mubert_pat, energy_level, duration_s, platform)
+    jamendo_id = os.getenv("JAMENDO_CLIENT_ID", "")
+    if jamendo_id:
+        track = _get_music_track_jamendo(jamendo_id, energy_level, platform)
         if track:
             return track
-        print("[music] Mubert failed, trying Supabase bucket fallback...")
+        print("[music] Jamendo failed, trying Supabase bucket fallback...")
     return _get_music_track_supabase(supabase_url, key, energy_level)
+
+
+def _apply_watermark(video_path: str, out_path: str) -> bool:
+    """Burn a subtle 'flicko.app' text watermark into the bottom-left corner for free-tier videos."""
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", video_path,
+                "-vf",
+                (
+                    "drawtext=text='flicko.app'"
+                    ":fontsize=24"
+                    ":fontcolor=white@0.80"
+                    ":x=18"
+                    ":y=h-th-18"
+                    ":shadowx=1:shadowy=1:shadowcolor=black@0.55"
+                ),
+                "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                "-c:a", "copy",
+                out_path,
+            ],
+            check=True, capture_output=True,
+        )
+        return os.path.exists(out_path)
+    except Exception as e:
+        print(f"[watermark] Failed (skipping): {e}")
+        return False
 
 
 def _mix_music(video_path: str, music_path: str, out_path: str, voice_vol: float = 0.55, music_vol: float = 0.22) -> bool:
@@ -564,6 +589,7 @@ def _do_render(
     supabase_url: str,
     supabase_key: str,
     tx_words: Optional[list],
+    user_tier: str = "free",
 ):
     """
     Renders a video and writes the final status directly to Supabase.
@@ -664,6 +690,13 @@ def _do_render(
                 except Exception:
                     pass
 
+        # 4c. Watermark for free-tier videos
+        if user_tier == "free":
+            watermarked = os.path.join(work, "final_watermarked.mp4")
+            if _apply_watermark(final, watermarked):
+                final = watermarked
+                print("[worker] Free-tier watermark applied")
+
         # 5. Upload to Supabase renders bucket — path starts with user_id so RLS policy allows signed URL creation
         dest_path = f"{user_id}/{project_id}/output_{job_id[:8]}.mp4"
         _upload_supabase(final, supabase_url, supabase_key, dest_path)
@@ -756,6 +789,7 @@ def render(req: RenderRequest):
                 req.supabase_url,
                 req.supabase_service_key,
                 req.transcript_words or None,
+                req.user_tier,
             )
         except Exception as exc:
             _update_project(req.supabase_url, req.supabase_service_key, req.project_id, {
@@ -953,6 +987,7 @@ class ProcessRequest(BaseModel):
     anthropic_api_key: Optional[str] = None
     has_voice_clone: bool = False
     creator_patterns: Optional[List[CreatorPattern]] = None
+    user_tier: str = "free"
 
 
 def _do_process(job_id: str, req: ProcessRequest) -> None:
@@ -1040,6 +1075,7 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
             sb_url,
             sb_key,
             transcript_words,
+            req.user_tier,
         )
 
     except Exception as exc:

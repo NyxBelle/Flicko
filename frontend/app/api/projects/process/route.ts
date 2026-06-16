@@ -37,19 +37,27 @@ export async function POST(req: NextRequest) {
 
     // Tier enforcement
     const usageCheck = await checkAndIncrementUsage(user.id);
+    const svc = serviceClient();
     if (!usageCheck.allowed) {
-      await serviceClient().from("projects")
+      await svc.from("projects")
         .update({ status: "failed", error_message: usageCheck.reason }).eq("id", projectId);
       return NextResponse.json({ error: usageCheck.reason, upgradeRequired: true }, { status: 402 });
     }
 
-    // Fetch creator patterns to give the worker learning context
-    const { data: creatorPatterns } = await serviceClient()
-      .from("creator_patterns")
-      .select("pattern_text, confidence, pattern_category")
-      .eq("user_id", user.id)
-      .order("confidence", { ascending: false })
-      .limit(4);
+    // Fetch creator patterns + voice clone status in parallel
+    const [{ data: creatorPatterns }, { data: voiceClones }] = await Promise.all([
+      svc.from("creator_patterns")
+        .select("pattern_text, confidence, pattern_category")
+        .eq("user_id", user.id)
+        .order("confidence", { ascending: false })
+        .limit(4),
+      svc.from("voice_clones")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("status", "ready")
+        .limit(1),
+    ]);
+    const hasVoiceClone = (voiceClones?.length ?? 0) > 0;
 
     // Generate 7-hour signed URLs for the worker
     const videoSignedUrls: string[] = [];
@@ -59,13 +67,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (videoSignedUrls.length === 0) {
-      await serviceClient().from("projects")
+      await svc.from("projects")
         .update({ status: "failed", error_message: "No video files found." }).eq("id", projectId);
       return NextResponse.json({ error: "No video files found" }, { status: 400 });
     }
 
     // Set status immediately so the UI shows EditingView right away
-    await serviceClient().from("projects").update({ status: "transcribing" }).eq("id", projectId);
+    await svc.from("projects").update({ status: "transcribing" }).eq("id", projectId);
 
     // Hand off the full pipeline to Railway — it handles all stages and updates Supabase directly.
     // Vercel returns immediately; no long-running work happens here.
@@ -83,15 +91,16 @@ export async function POST(req: NextRequest) {
         supabase_url:         process.env.NEXT_PUBLIC_SUPABASE_URL,
         supabase_service_key: process.env.SUPABASE_SERVICE_ROLE_KEY,
         anthropic_api_key:    process.env.ANTHROPIC_API_KEY,
-        has_voice_clone:      false,
+        has_voice_clone:      hasVoiceClone,
         creator_patterns:     creatorPatterns ?? [],
+        user_tier:            usageCheck.tier,
       }),
       signal: AbortSignal.timeout(15_000),
     });
 
     if (!workerRes.ok) {
       const errText = await workerRes.text();
-      await serviceClient().from("projects")
+      await svc.from("projects")
         .update({ status: "failed", error_message: `Worker error: ${errText.slice(0, 300)}` })
         .eq("id", projectId);
       return NextResponse.json({ error: "Worker failed to start" }, { status: 500 });
