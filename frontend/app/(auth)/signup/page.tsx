@@ -47,6 +47,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +55,7 @@ export default function SignupPage() {
     if (password.length < 8) { toast.error("Password must be at least 8 characters"); return; }
     setLoading(true);
     const supabase = createClient();
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -67,14 +68,15 @@ export default function SignupPage() {
       setLoading(false);
       return;
     }
-    toast.success("Account created! Signing you in…");
-    const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
-    if (!loginError) {
+    // If Supabase returned a session immediately, email confirmation is off — go straight to dashboard
+    if (data.session) {
       router.push("/dashboard");
       router.refresh();
-    } else {
-      router.push("/login");
+      return;
     }
+    // Email confirmation required — show the check-your-email state
+    setConfirmed(true);
+    setLoading(false);
   };
 
   return (
@@ -90,33 +92,55 @@ export default function SignupPage() {
           flex: 1, display: "flex", flexDirection: "column",
           justifyContent: "center", maxWidth: 400, width: "100%", margin: "0 auto",
         }}>
-          <p className="eyebrow" style={{ marginBottom: 14 }}>Create your account</p>
-          <h1 className="display" style={{ fontSize: "clamp(32px,5vw,48px)", color: "var(--ink)", marginBottom: 32 }}>
-            Your first two edits{" "}
-            <em className="serif-i" style={{ color: "var(--accent)" }}>on the house.</em>
-          </h1>
+          {confirmed ? (
+            <>
+              <div style={{
+                width: 52, height: 52, borderRadius: "50%", background: "#e8f8f0",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 24, marginBottom: 24,
+              }}>✉️</div>
+              <h1 className="display" style={{ fontSize: "clamp(26px,4vw,38px)", color: "var(--ink)", marginBottom: 12 }}>
+                Check your email
+              </h1>
+              <p style={{ fontSize: 15, color: "var(--muted)", lineHeight: 1.6, marginBottom: 28 }}>
+                We sent a confirmation link to <strong style={{ color: "var(--ink)" }}>{email}</strong>.
+                Click it to activate your account, then come back and log in.
+              </p>
+              <Link href="/login" className="btn btn-accent" style={{ textAlign: "center", justifyContent: "center" }}>
+                Go to login
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="eyebrow" style={{ marginBottom: 14 }}>Create your account</p>
+              <h1 className="display" style={{ fontSize: "clamp(32px,5vw,48px)", color: "var(--ink)", marginBottom: 32 }}>
+                Your first two edits{" "}
+                <em className="serif-i" style={{ color: "var(--accent)" }}>on the house.</em>
+              </h1>
 
-          <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <Field label="Your name" type="text" value={name} onChange={setName} placeholder="e.g. Amara Okafor" />
-            <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
-            <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="Min 8 characters" />
+              <form onSubmit={handleSignup} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <Field label="Your name" type="text" value={name} onChange={setName} placeholder="e.g. Amara Okafor" />
+                <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+                <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="Min 8 characters" />
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-accent"
-              style={{ marginTop: 6, width: "100%", justifyContent: "center", opacity: loading ? 0.65 : 1 }}
-            >
-              {loading ? "Creating account…" : <>Create account <ArrowRight size={15} /></>}
-            </button>
-          </form>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn btn-accent"
+                  style={{ marginTop: 6, width: "100%", justifyContent: "center", opacity: loading ? 0.65 : 1 }}
+                >
+                  {loading ? "Creating account…" : <>Create account <ArrowRight size={15} /></>}
+                </button>
+              </form>
 
-          <p style={{ textAlign: "center", marginTop: 24, fontSize: 14, color: "var(--muted)" }}>
-            Already have an account?{" "}
-            <Link href="/login" style={{ color: "var(--accent)", fontWeight: 600, textDecoration: "none" }}>
-              Log in
-            </Link>
-          </p>
+              <p style={{ textAlign: "center", marginTop: 24, fontSize: 14, color: "var(--muted)" }}>
+                Already have an account?{" "}
+                <Link href="/login" style={{ color: "var(--accent)", fontWeight: 600, textDecoration: "none" }}>
+                  Log in
+                </Link>
+              </p>
+            </>
+          )}
         </div>
 
         <Link href="/" style={{
