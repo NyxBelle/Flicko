@@ -62,14 +62,13 @@ export default function PrivacyPage() {
       </p>
 
       <h2 style={S.h2}>4. Data sharing</h2>
-      <p style={S.p}>We use the following services to operate Flicko:</p>
+      <p style={S.p}>We do not sell your data. We share only what is necessary with the following categories of service providers:</p>
       <ul style={S.ul}>
-        <li style={S.li}><strong>Supabase</strong> — database and file storage (EU-West, AWS)</li>
-        <li style={S.li}><strong>Railway</strong> — server infrastructure</li>
-        <li style={S.li}><strong>Paystack / Flutterwave</strong> — payment processing</li>
-        <li style={S.li}><strong>AI processing services</strong> — for generating edit decisions and transcriptions. No personally identifiable data is included in these requests.</li>
+        <li style={S.li}><strong>Cloud infrastructure</strong> — hosting, database, and file storage</li>
+        <li style={S.li}><strong>Payment processors</strong> — to handle subscription billing. We receive only a transaction reference and your subscription status; we never see card or bank details.</li>
+        <li style={S.li}><strong>AI processing</strong> — to generate edit decisions and transcriptions. No personally identifiable information is included in these requests.</li>
       </ul>
-      <p style={S.p}>Each provider processes only the minimum data necessary and is bound by their own privacy obligations.</p>
+      <p style={S.p}>Each provider processes only the minimum data necessary for their function and is contractually bound to protect it.</p>
 
       <h2 style={S.h2}>5. Data retention</h2>
       <ul style={S.ul}>
