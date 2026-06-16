@@ -55,12 +55,13 @@ export default function SignupPage() {
     if (password.length < 8) { toast.error("Password must be at least 8 characters"); return; }
     setLoading(true);
     const supabase = createClient();
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://flicko.co";
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: name.trim() },
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback`,
+        emailRedirectTo: `${appUrl}/api/auth/callback`,
       },
     });
     if (error) {
@@ -68,13 +69,19 @@ export default function SignupPage() {
       setLoading(false);
       return;
     }
-    // If Supabase returned a session immediately, email confirmation is off — go straight to dashboard
+    // Supabase silently returns an empty identities array for already-registered emails
+    if (data.user && (data.user.identities?.length ?? 0) === 0) {
+      toast.error("An account with this email already exists. Please log in instead.");
+      setLoading(false);
+      return;
+    }
+    // Email confirmation off — go straight to dashboard
     if (data.session) {
       router.push("/dashboard");
       router.refresh();
       return;
     }
-    // Email confirmation required — show the check-your-email state
+    // Email confirmation required — show check-your-email screen
     setConfirmed(true);
     setLoading(false);
   };
@@ -104,11 +111,20 @@ export default function SignupPage() {
               </h1>
               <p style={{ fontSize: 15, color: "var(--muted)", lineHeight: 1.6, marginBottom: 28 }}>
                 We sent a confirmation link to <strong style={{ color: "var(--ink)" }}>{email}</strong>.
-                Click it to activate your account, then come back and log in.
+                Click the link in that email to activate your account — it takes you straight to your dashboard.
               </p>
               <Link href="/login" className="btn btn-accent" style={{ textAlign: "center", justifyContent: "center" }}>
                 Go to login
               </Link>
+              <p style={{ textAlign: "center", marginTop: 16, fontSize: 13, color: "var(--muted)" }}>
+                Wrong email?{" "}
+                <button
+                  onClick={() => setConfirmed(false)}
+                  style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 600, cursor: "pointer", fontSize: 13, padding: 0 }}
+                >
+                  Go back
+                </button>
+              </p>
             </>
           ) : (
             <>
