@@ -1,4 +1,4 @@
-const FW_BASE = "https://api.flutterwave.com/v3";
+const FW_BASE = "https://api.flutterwave.com/v4";
 
 // Flutterwave amounts in NGN
 const PLAN_AMOUNTS: Record<string, number> = {
