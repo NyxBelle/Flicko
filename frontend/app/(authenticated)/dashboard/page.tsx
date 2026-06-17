@@ -304,7 +304,7 @@ export default function DashboardPage() {
         <h2 className="serif" style={{ fontSize: 22, color: "var(--ink)" }}>Your edits</h2>
 
         {/* Filter pills */}
-        <div style={{ display: "flex", gap: 6 }}>
+        <div className="app-filter-pills" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {FILTER_TABS.map((tab) => (
             <button
               key={tab}

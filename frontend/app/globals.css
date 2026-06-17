@@ -330,13 +330,43 @@ input[type="range"].f-range::-moz-range-thumb {
 @media (max-width: 768px) {
   .app-pricing-grid { grid-template-columns: 1fr !important; }
   .app-stats-strip  { grid-template-columns: 1fr 1fr !important; }
-  .app-filter-pills { gap: 6px !important; }
+  .app-filter-pills { gap: 6px !important; flex-wrap: wrap !important; }
   .app-filter-pills .f-pill { padding: 6px 11px !important; font-size: 12px !important; }
 }
 
 @media (max-width: 480px) {
   .app-stats-strip { grid-template-columns: 1fr 1fr !important; }
   .app-pricing-grid > div { padding: 24px 20px !important; }
+}
+
+/* Settings page */
+.settings-nav-link:hover { background: var(--paper-2); color: var(--ink) !important; }
+
+@media (max-width: 860px) {
+  .settings-layout {
+    grid-template-columns: 1fr !important;
+  }
+  .settings-nav {
+    position: static !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    margin-bottom: 16px !important;
+    padding-bottom: 16px !important;
+    border-bottom: 1px solid var(--line) !important;
+  }
+}
+
+/* Project skeleton grid */
+@media (max-width: 600px) {
+  .project-skeleton-grid { grid-template-columns: 1fr !important; }
+}
+
+/* Result view desktop/mobile toggle */
+@media (max-width: 780px) {
+  .result-desktop { display: none !important; }
+  .result-mobile  { display: block !important; }
 }
 
 /* ── Reduced motion ─────────────────────────────────────────── */

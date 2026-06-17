@@ -736,12 +736,6 @@ export function ResultView({ project, videoSrc, recutting = false, onAdjust, onD
         </div>
       </div>
 
-      <style>{`
-        @media (max-width: 780px) {
-          .result-desktop { display: none !important; }
-          .result-mobile   { display: block !important; }
-        }
-      `}</style>
     </>
   );
 }

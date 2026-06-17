@@ -98,7 +98,7 @@ function LoadingSkeleton() {
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "48px 24px" }}>
       <div className="skeleton" style={{ height: 36, width: 240, borderRadius: 8, marginBottom: 16 }} />
       <div className="skeleton" style={{ height: 20, width: 180, borderRadius: 8, marginBottom: 32 }} />
-      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 56 }}>
+      <div className="project-skeleton-grid" style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 56 }}>
         <div className="skeleton" style={{ aspectRatio: "9/16", borderRadius: 20 }} />
         <div style={{ display: "grid", gap: 16 }}>
           {[1, 2, 3, 4].map(i => (

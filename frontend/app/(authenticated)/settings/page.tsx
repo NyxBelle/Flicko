@@ -90,10 +90,10 @@ export default async function SettingsPage() {
         </h1>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "210px 1fr", gap: 32, alignItems: "start" }}>
+      <div className="settings-layout" style={{ display: "grid", gridTemplateColumns: "210px 1fr", gap: 32, alignItems: "start" }}>
 
         {/* ── Left nav ── */}
-        <nav style={{ position: "sticky", top: 88 }}>
+        <nav className="settings-nav" style={{ position: "sticky", top: 88 }}>
           {[
             { label: "Profile", href: "#profile" },
             { label: "Plan & billing", href: "#billing" },
@@ -136,9 +136,9 @@ export default async function SettingsPage() {
                 </div>
               </div>
               <Row label="Email" value={user.email} />
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 0", borderBottom: "1px solid var(--line)" }}>
-                <span style={{ fontSize: 13, color: "var(--muted)" }}>Display name</span>
-                <div style={{ minWidth: 220 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 0", borderBottom: "1px solid var(--line)", gap: 12, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: "var(--muted)", flexShrink: 0 }}>Display name</span>
+                <div style={{ flex: "1 1 180px", minWidth: 0 }}>
                   <ProfileEditForm initialName={profile?.full_name ?? ""} userId={user.id} />
                 </div>
               </div>
@@ -259,13 +259,6 @@ export default async function SettingsPage() {
         </div>
       </div>
 
-      <style>{`
-        .settings-nav-link:hover { background: var(--paper-2); color: var(--ink) !important; }
-        @media (max-width: 900px) {
-          .settings-layout { grid-template-columns: 1fr !important; }
-          .settings-nav { position: static !important; display: flex !important; gap: 6px !important; overflow-x: auto; }
-        }
-      `}</style>
     </div>
   );
 }
