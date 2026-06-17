@@ -168,13 +168,18 @@ export default function EditorPage() {
         {/* What's in it */}
         <section>
           <SectionLabel>What&apos;s in it?</SectionLabel>
-          <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>
-            Describe the content — who&apos;s in it, what happens, the tone.
+          <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8, lineHeight: 1.55 }}>
+            This is what Flicko reads to make every creative decision — what to cut, how to pace it, what audio fits, where to hook the viewer. The more specific you are about tone, context, and what makes this footage unique, the better the edit.
           </p>
           <FocusInput
             rows={4} value={contentContext} onChange={setContentContext}
-            placeholder="e.g. Comedy skit where I pretend to be a customer complaining about slow Wi-Fi…"
+            placeholder="e.g. Comedy skit where I pretend to be a customer complaining about slow Wi-Fi. Filmed in a café, casual tone, lots of exaggerated reactions. The punchline is at the end when the waiter reveals he's the CEO of the ISP."
           />
+          {contentContext.length > 0 && contentContext.length < 40 && (
+            <p style={{ fontSize: 12, color: "var(--accent-ink)", marginTop: 6 }}>
+              A bit more detail helps Flicko make sharper decisions.
+            </p>
+          )}
         </section>
 
         {/* What should it do — outcome pills */}

@@ -326,6 +326,19 @@ input[type="range"].f-range::-moz-range-thumb {
   box-shadow: 0 2px 8px rgba(0,0,0,.18);
 }
 
+/* ── App responsive ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .app-pricing-grid { grid-template-columns: 1fr !important; }
+  .app-stats-strip  { grid-template-columns: 1fr 1fr !important; }
+  .app-filter-pills { gap: 6px !important; }
+  .app-filter-pills .f-pill { padding: 6px 11px !important; font-size: 12px !important; }
+}
+
+@media (max-width: 480px) {
+  .app-stats-strip { grid-template-columns: 1fr 1fr !important; }
+  .app-pricing-grid > div { padding: 24px 20px !important; }
+}
+
 /* ── Reduced motion ─────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .live-dot,

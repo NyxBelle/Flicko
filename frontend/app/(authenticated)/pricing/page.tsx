@@ -44,7 +44,7 @@ const FAQS = [
   },
   {
     q: "What do I get on the Free plan?",
-    a: "Two lifetime edits, full Flicko decisions, captions, transitions, and trending sound overlay. No credit card required. It's a real edit, not a watermarked preview.",
+    a: "Two lifetime edits, full Flicko decisions, captions, transitions, and trending sound overlay. No credit card required. Free edits include a small flicko.app watermark — upgrade to any paid plan to remove it.",
   },
   {
     q: "Can I ask Flicko to reconsider a decision?",
@@ -54,6 +54,99 @@ const FAQS = [
 
 type Provider = "flutterwave" | "paystack";
 type BillingPeriod = "monthly" | "annual";
+
+function PaymentModal({ tier, billing, onClose, onPay }: {
+  tier: string; billing: BillingPeriod;
+  onClose: () => void; onPay: (provider: Provider) => void;
+}) {
+  const plan = PLANS.find((p) => p.tier === tier);
+  if (!plan) return null;
+  const price = billing === "annual" ? plan.yr : plan.mo;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(20,19,15,0.55)", backdropFilter: "blur(4px)",
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        padding: "0 16px 24px",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--card)", borderRadius: 24, padding: "32px 28px",
+          width: "100%", maxWidth: 440,
+          border: "1px solid var(--line)",
+          boxShadow: "0 32px 80px -24px rgba(20,19,15,0.35)",
+        }}
+      >
+        <div style={{ marginBottom: 24 }}>
+          <p style={{ fontSize: 13, color: "var(--muted)", fontFamily: "var(--font-mono)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
+            Upgrading to {plan.name}
+          </p>
+          <p style={{ fontSize: 28, fontWeight: 800, color: "var(--ink)", letterSpacing: "-0.03em" }}>
+            ${price}<span style={{ fontSize: 15, fontWeight: 400, color: "var(--muted)" }}>/mo</span>
+          </p>
+        </div>
+
+        <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 20, lineHeight: 1.5 }}>
+          Choose your payment method:
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+          <button
+            onClick={() => onPay("paystack")}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "16px 20px", borderRadius: 14,
+              border: "1px solid var(--line)", background: "var(--paper)",
+              cursor: "pointer", textAlign: "left", transition: "border-color 0.15s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--ink)")}
+            onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--line)")}
+          >
+            <div>
+              <p style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>Paystack</p>
+              <p style={{ fontSize: 12.5, color: "var(--muted)" }}>Cards, bank transfer — Nigeria & Africa</p>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+
+          <button
+            onClick={() => onPay("flutterwave")}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "16px 20px", borderRadius: 14,
+              border: "1px solid var(--line)", background: "var(--paper)",
+              cursor: "pointer", textAlign: "left", transition: "border-color 0.15s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--ink)")}
+            onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--line)")}
+          >
+            <div>
+              <p style={{ fontSize: 15, fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>Flutterwave</p>
+              <p style={{ fontSize: 12.5, color: "var(--muted)" }}>Cards, mobile money — worldwide</p>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+
+        <button
+          onClick={onClose}
+          style={{
+            width: "100%", padding: "12px", borderRadius: 999,
+            border: "1px solid var(--line-2)", background: "transparent",
+            color: "var(--muted)", fontSize: 14, cursor: "pointer",
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function FaqRow({ q, a, defaultOpen }: { q: string; a: string; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(!!defaultOpen);
@@ -87,17 +180,18 @@ function FaqRow({ q, a, defaultOpen }: { q: string; a: string; defaultOpen?: boo
 
 export default function PricingPage() {
   const [billing, setBilling] = useState<BillingPeriod>("monthly");
-  const [provider, setProvider] = useState<Provider>("paystack");
   const [loading, setLoading] = useState<string | null>(null);
+  const [modalTier, setModalTier] = useState<string | null>(null);
 
-  const handleUpgrade = async (tier: string) => {
-    if (tier === "free") return;
-    setLoading(tier);
+  const handlePay = async (provider: Provider) => {
+    if (!modalTier) return;
+    setModalTier(null);
+    setLoading(modalTier);
     try {
       const res = await fetch(`/api/billing/${provider}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier }),
+        body: JSON.stringify({ tier: modalTier }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -114,6 +208,14 @@ export default function PricingPage() {
 
   return (
     <div style={{ maxWidth: "var(--maxw)", margin: "0 auto", padding: "64px var(--gutter)" }}>
+      {modalTier && (
+        <PaymentModal
+          tier={modalTier}
+          billing={billing}
+          onClose={() => setModalTier(null)}
+          onPay={handlePay}
+        />
+      )}
 
       {/* Hero */}
       <div style={{ textAlign: "center", maxWidth: 680, margin: "0 auto 56px" }}>
@@ -157,28 +259,8 @@ export default function PricingPage() {
         </div>
       </div>
 
-      {/* Payment provider */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 48 }}>
-        <span style={{ fontSize: 13, color: "var(--faint)", alignSelf: "center" }}>Pay with:</span>
-        {(["paystack", "flutterwave"] as Provider[]).map((p) => (
-          <button
-            key={p}
-            onClick={() => setProvider(p)}
-            style={{
-              padding: "5px 14px", borderRadius: 999,
-              border: `1px solid ${provider === p ? "var(--ink)" : "var(--line-2)"}`,
-              background: provider === p ? "var(--ink)" : "transparent",
-              color: provider === p ? "var(--paper)" : "var(--muted)",
-              fontSize: 12.5, fontWeight: provider === p ? 600 : 400,
-              cursor: "pointer", transition: "all 0.15s",
-              textTransform: "capitalize",
-            }}
-          >{p}</button>
-        ))}
-      </div>
-
       {/* Plans grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 20, marginBottom: 80, alignItems: "stretch" }}>
+      <div className="app-pricing-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 20, marginBottom: 80, alignItems: "stretch" }}>
         {PLANS.map(({ id, name, tier, mo, yr, suffix, blurb, features, missing, cta, popular }) => {
           const price = billing === "annual" ? yr : mo;
           const isPro = popular;
@@ -219,7 +301,7 @@ export default function PricingPage() {
 
               {/* CTA */}
               <button
-                onClick={() => handleUpgrade(tier)}
+                onClick={() => tier !== "free" && setModalTier(tier)}
                 disabled={tier === "free" || loading === tier}
                 style={{
                   width: "100%", padding: "14px", borderRadius: 999,
@@ -271,12 +353,8 @@ export default function PricingPage() {
       </div>
 
       <p style={{ textAlign: "center", fontSize: 12, color: "var(--faint)", marginTop: 48 }}>
-        Payments processed securely via {provider === "paystack" ? "Paystack" : "Flutterwave"}. Cancel anytime.
+        Payments processed securely via Paystack or Flutterwave. Cancel anytime.
       </p>
-
-      <style>{`
-        @media (max-width: 768px) { .pricing-grid { grid-template-columns: 1fr !important; } }
-      `}</style>
     </div>
   );
 }

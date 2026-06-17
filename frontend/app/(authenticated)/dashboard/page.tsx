@@ -100,7 +100,7 @@ function StatsStrip({ editsThisMonth, editsLeft, tier }: { editsThisMonth: numbe
   ];
 
   return (
-    <div style={{
+    <div className="app-stats-strip" style={{
       border: "1px solid var(--line)", borderRadius: 16,
       display: "grid", gridTemplateColumns: "repeat(4,1fr)",
       overflow: "hidden", marginBottom: 20,
@@ -118,7 +118,6 @@ function StatsStrip({ editsThisMonth, editsLeft, tier }: { editsThisMonth: numbe
           </p>
         </div>
       ))}
-      <style>{`@media(max-width:700px){.stats-strip{grid-template-columns:1fr 1fr!important}}`}</style>
     </div>
   );
 }
