@@ -1,18 +1,20 @@
 const FW_BASE = "https://api.flutterwave.com/v3";
 
 // Flutterwave amounts in NGN
-const PLAN_AMOUNTS: Record<string, number> = {
-  starter: 15000, // ₦15,000 ($10 equivalent)
-  pro: 22500,     // ₦22,500 ($15 equivalent)
+const PLAN_AMOUNTS: Record<string, { monthly: number; annual: number }> = {
+  starter: { monthly: 15000, annual: 144000 }, // ₦15,000/mo · ₦144,000/yr ($8×12)
+  pro:     { monthly: 22500, annual: 216000 }, // ₦22,500/mo · ₦216,000/yr ($12×12)
 };
 
 export async function createFlutterwavePaymentLink(params: {
   email: string;
   userId: string;
   tier: string;
+  billing: "monthly" | "annual";
   redirectUrl: string;
 }): Promise<string> {
-  const amount = PLAN_AMOUNTS[params.tier];
+  const amounts = PLAN_AMOUNTS[params.tier];
+  const amount = amounts?.[params.billing];
   if (!amount) throw new Error(`Invalid tier: ${params.tier}`);
 
   const txRef = `flicko-${params.userId}-${params.tier}-${Date.now()}`;
@@ -29,7 +31,7 @@ export async function createFlutterwavePaymentLink(params: {
       currency: "NGN",
       redirect_url: params.redirectUrl,
       customer: { email: params.email },
-      meta: { userId: params.userId, tier: params.tier },
+      meta: { userId: params.userId, tier: params.tier, billing: params.billing },
       customizations: {
         title: "Flicko",
         description: `${params.tier.charAt(0).toUpperCase() + params.tier.slice(1)} Plan`,

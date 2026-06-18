@@ -3,18 +3,20 @@ import { createHmac } from "crypto";
 const PS_BASE = "https://api.paystack.co";
 
 // Paystack amounts are in kobo (1 NGN = 100 kobo)
-const PLAN_AMOUNTS_KOBO: Record<string, number> = {
-  starter: 1500000, // ₦15,000 ($10 equivalent)
-  pro: 2250000,     // ₦22,500 ($15 equivalent)
+const PLAN_AMOUNTS_KOBO: Record<string, { monthly: number; annual: number }> = {
+  starter: { monthly: 1500000, annual: 14400000 }, // ₦15,000/mo · ₦144,000/yr ($8×12)
+  pro:     { monthly: 2250000, annual: 21600000 }, // ₦22,500/mo · ₦216,000/yr ($12×12)
 };
 
 export async function createPaystackPaymentLink(params: {
   email: string;
   userId: string;
   tier: string;
+  billing: "monthly" | "annual";
   callbackUrl: string;
 }): Promise<string> {
-  const amount = PLAN_AMOUNTS_KOBO[params.tier];
+  const amounts = PLAN_AMOUNTS_KOBO[params.tier];
+  const amount = amounts?.[params.billing];
   if (!amount) throw new Error(`Invalid tier: ${params.tier}`);
 
   const res = await fetch(`${PS_BASE}/transaction/initialize`, {
@@ -31,6 +33,7 @@ export async function createPaystackPaymentLink(params: {
       metadata: {
         userId: params.userId,
         tier: params.tier,
+        billing: params.billing,
         cancel_action: `${process.env.NEXT_PUBLIC_APP_URL}/pricing`,
       },
     }),

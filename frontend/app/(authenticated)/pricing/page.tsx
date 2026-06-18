@@ -61,7 +61,9 @@ function PaymentModal({ tier, billing, onClose, onPay }: {
 }) {
   const plan = PLANS.find((p) => p.tier === tier);
   if (!plan) return null;
-  const price = billing === "annual" ? plan.yr : plan.mo;
+  const isAnnual = billing === "annual";
+  const monthlyRate = isAnnual ? plan.yr : plan.mo;
+  const chargeTotal = isAnnual ? plan.yr * 12 : plan.mo;
 
   return (
     <div
@@ -84,11 +86,19 @@ function PaymentModal({ tier, billing, onClose, onPay }: {
       >
         <div style={{ marginBottom: 24 }}>
           <p style={{ fontSize: 13, color: "var(--muted)", fontFamily: "var(--font-mono)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
-            Upgrading to {plan.name}
+            Upgrading to {plan.name} · {isAnnual ? "Annual" : "Monthly"}
           </p>
           <p style={{ fontSize: 28, fontWeight: 800, color: "var(--ink)", letterSpacing: "-0.03em" }}>
-            ${price}<span style={{ fontSize: 15, fontWeight: 400, color: "var(--muted)" }}>/mo</span>
+            ${chargeTotal}
+            <span style={{ fontSize: 15, fontWeight: 400, color: "var(--muted)" }}>
+              {isAnnual ? "/year" : "/month"}
+            </span>
           </p>
+          {isAnnual && (
+            <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
+              ${monthlyRate}/mo × 12 months — billed today
+            </p>
+          )}
         </div>
 
         <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 20, lineHeight: 1.5 }}>
@@ -191,7 +201,7 @@ export default function PricingPage() {
       const res = await fetch(`/api/billing/${provider}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: modalTier }),
+        body: JSON.stringify({ tier: modalTier, billing }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

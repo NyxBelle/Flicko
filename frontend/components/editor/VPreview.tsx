@@ -34,15 +34,15 @@ function CaptionOverlay({ styleName, width }: { styleName: string; width: number
   if (c.single) {
     return (
       <div style={{ ...boxStyle, padding: "5px 12px", lineHeight: 1.1 }}>
-        like<span style={{ opacity: 0.35 }}> this</span>
+        your caption<span style={{ opacity: 0.35 }}> here</span>
       </div>
     );
   }
 
   return (
     <div style={{ ...boxStyle, padding: "5px 11px" }}>
-      never had suya{c.two ? <br /> : " "}
-      <span style={{ color: c.color === "#111" ? "var(--accent)" : "#fff" }}>like this</span>
+      your caption{c.two ? <br /> : " "}
+      <span style={{ color: c.color === "#111" ? "var(--accent)" : "#fff" }}>goes here</span>
     </div>
   );
 }

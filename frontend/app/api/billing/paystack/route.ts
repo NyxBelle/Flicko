@@ -13,15 +13,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { tier } = await req.json() as { tier: string };
+    const { tier, billing = "monthly" } = await req.json() as { tier: string; billing?: "monthly" | "annual" };
     if (!["starter", "pro"].includes(tier)) {
       return NextResponse.json({ error: "Invalid tier" }, { status: 400 });
+    }
+    if (!["monthly", "annual"].includes(billing)) {
+      return NextResponse.json({ error: "Invalid billing period" }, { status: 400 });
     }
 
     const url = await createPaystackPaymentLink({
       email: user.email!,
       userId: user.id,
       tier,
+      billing,
       callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?payment=success`,
     });
 
