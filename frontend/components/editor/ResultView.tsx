@@ -739,6 +739,7 @@ export function ResultView({ project, videoSrc, recutting = false, onAdjust, onD
         playing={playing}
         onTogglePlay={() => setPlaying(p => !p)}
         captionStyle={previewCaptionStyle}
+        captionText={ed.hook_text || ed.suggested_title || ""}
         recutting={recutting}
         width={w}
       />
