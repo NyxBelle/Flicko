@@ -108,14 +108,15 @@ export default function EditorPage() {
 
       if (projectError || !project) throw new Error(projectError?.message ?? "Failed to create project");
 
-      const uploadedUrls: string[] = [];
-      for (const { file } of files) {
-        const ext = file.name.split(".").pop();
-        const path = `${user.id}/${project.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from("videos").upload(path, file, { contentType: file.type });
-        if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
-        uploadedUrls.push(path);
-      }
+      const uploadedUrls = await Promise.all(
+        files.map(async ({ file }) => {
+          const ext = file.name.split(".").pop();
+          const path = `${user.id}/${project.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+          const { error: uploadError } = await supabase.storage.from("videos").upload(path, file, { contentType: file.type });
+          if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
+          return path;
+        })
+      );
 
       await supabase.from("projects").update({ video_urls: uploadedUrls, status: "transcribing" }).eq("id", project.id);
 

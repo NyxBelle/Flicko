@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       tier,
       billing,
-      callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?payment=success`,
+      callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://flicko.co"}/dashboard?payment=success`,
     });
 
     return NextResponse.json({ url });

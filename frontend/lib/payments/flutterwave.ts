@@ -1,4 +1,5 @@
 const FW_BASE = "https://api.flutterwave.com/v3";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://flicko.co";
 
 // Flutterwave amounts in NGN
 const PLAN_AMOUNTS: Record<string, { monthly: number; annual: number }> = {
@@ -35,7 +36,7 @@ export async function createFlutterwavePaymentLink(params: {
       customizations: {
         title: "Flicko",
         description: `${params.tier.charAt(0).toUpperCase() + params.tier.slice(1)} Plan`,
-        logo: `${process.env.NEXT_PUBLIC_APP_URL}/icon.png`,
+        logo: `${APP_URL}/icon.png`,
       },
     }),
   });

@@ -840,19 +840,30 @@ PLATFORM TARGETS
 - Shorts: under 60s
 - LinkedIn: 45–90s
 
-AUDIO TREATMENT RULES — what to write in "audio_treatment":
-  "trending_sound"  → add background music (DEFAULT for TikTok/Reels/Shorts)
-  "keep_original"   → keep raw audio only (when dialogue/natural sound IS the content)
-  "voiceover"       → AI voice narration (only when has_voice_clone=Yes)
-  If USER'S AUDIO PREFERENCE is "flicko_decides": YOU decide. Default "trending_sound" for vertical/entertainment content.
-  If USER'S AUDIO PREFERENCE is "trending_sound": ALWAYS return "trending_sound".
-  NEVER return "no_voiceover" or any value not in the list above.
+AUDIO TREATMENT — read the content, then decide. Do not default blindly.
 
-MUTE ORIGINAL AUDIO — set "mute_original": true ONLY when:
-  - The source footage audio is chaotic, incoherent, or adds no value (e.g. background noise, loud crowd, pointless ambient sound)
-  - The footage clearly has no narrative or dialogue worth keeping
-  When mute_original is true, the original audio is silenced completely and music plays at full volume.
-  When false (default), music is mixed under the original audio.
+STEP 1 — Is there meaningful speech or sound in this footage?
+  YES (talking head, comedy skit, dialogue, interview, reaction, tutorial, storytelling, voiceover narration, a specific sound effect that IS the joke/punchline) → the original audio carries the content. Prioritise "keep_original".
+  NO (silent B-roll, ambient visuals, montage clips with no dialogue, action without narration, crowd/event footage where the sound adds nothing) → the original audio is filler. Use "trending_sound".
+
+STEP 2 — What did the user say in the content_context?
+  If they describe dialogue, a punchline, a spoken moment, a conversation, a lecture, or a reaction — the audio is the content. Use "keep_original".
+  If they describe visuals, a lifestyle clip, a product, action, or say nothing about sound — music is fine.
+
+STEP 3 — Honour the user's audio_preference:
+  "flicko_decides"  → apply STEP 1 + STEP 2 above. Make the smart call.
+  "trending_sound"  → ALWAYS return "trending_sound" regardless of content.
+  "keep_original"   → ALWAYS return "keep_original" regardless of content.
+  "voiceover"       → only if has_voice_clone=Yes; otherwise fall back to "flicko_decides" logic.
+  NEVER return any value not in: trending_sound | keep_original | voiceover
+
+MUTE ORIGINAL AUDIO — set "mute_original": true ONLY when ALL of these are true:
+  1. audio_treatment is "trending_sound"
+  2. The original audio is actively harmful to the edit: chaotic background noise, incoherent crowd, wind, hum, or ambient sound that clashes with music
+  3. There is no dialogue or intentional sound worth keeping
+  When true: original audio is silenced, music plays at full volume.
+  When false (default): music is mixed quietly under the original audio.
+  NEVER mute original audio when there is any meaningful speech — even if trending_sound is chosen, the speech should be audible under the music.
 
 HOOK TEXT
 Write a punchy 4–7 word overlay shown at the start. Hook the viewer before they scroll. Examples: "Wait till the end...", "This changed everything", "Nobody talks about this". No hashtags, no emojis.

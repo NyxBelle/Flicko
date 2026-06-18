@@ -1,6 +1,7 @@
 import { createHmac } from "crypto";
 
 const PS_BASE = "https://api.paystack.co";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://flicko.co";
 
 // Paystack amounts are in kobo (1 NGN = 100 kobo)
 const PLAN_AMOUNTS_KOBO: Record<string, { monthly: number; annual: number }> = {
@@ -34,7 +35,7 @@ export async function createPaystackPaymentLink(params: {
         userId: params.userId,
         tier: params.tier,
         billing: params.billing,
-        cancel_action: `${process.env.NEXT_PUBLIC_APP_URL}/pricing`,
+        cancel_action: `${APP_URL}/pricing`,
       },
     }),
   });
