@@ -830,6 +830,11 @@ Choose a hook that: starts in the middle of action/conflict, asks a question the
 DEAD AIR IS YOUR ENEMY
 Remove filler words, false starts, repeated points, long pauses, tangents. Be ruthless.
 
+MULTIPLE SOURCE CLIPS — when more than one clip is provided:
+Every clip was uploaded deliberately. The creator chose each one for a reason — different angle, continuation of a story, a reaction shot, a different scene. Your edit MUST draw from ALL of them.
+Do not let audio quality determine which clips get used. A clip with noisier audio is not a clip to skip — it is a clip to be smart about. Use a shorter section of it, pair it with music, or position it where audio quality matters less (cutaway, reaction, visual moment). Never ignore a clip entirely because another one sounds cleaner.
+If you only use one clip out of several, you have failed the edit.
+
 SPEED MODIFIERS — use sparingly (max 1–2 per edit)
 - 0.5 (slow-mo): punchline reactions, impact moments, emotion
 - 2.0 (double speed): montage filler, setup context
@@ -930,6 +935,7 @@ def _make_edit_decision(
     duration_seconds: float,
     has_voice_clone: bool,
     creator_patterns: Optional[list] = None,
+    clip_boundaries: Optional[list] = None,  # list of (start, end) tuples in seconds
 ) -> dict:
     try:
         import anthropic as _anthropic
@@ -953,6 +959,21 @@ def _make_edit_decision(
         )
 
     client = _anthropic.Anthropic(api_key=api_key)
+
+    clip_info = ""
+    if clip_boundaries and len(clip_boundaries) > 1:
+        lines = []
+        for i, (s, e) in enumerate(clip_boundaries, 1):
+            lines.append(f"  Clip {i}: {s:.2f}s – {e:.2f}s  ({e - s:.1f}s long)")
+        clip_info = (
+            f"\nSOURCE CLIPS ({len(clip_boundaries)} uploaded):\n"
+            + "\n".join(lines)
+            + "\n"
+            "Every clip listed above was uploaded intentionally. "
+            "Your segments MUST include footage from every source clip — "
+            "do not skip any clip entirely regardless of audio quality.\n"
+        )
+
     user_msg = (
         f"VIDEO TRANSCRIPT:\n{transcript}\n\n"
         f"CREATOR'S CONTEXT:\n{content_context}\n\n"
@@ -960,7 +981,8 @@ def _make_edit_decision(
         f"TARGET PLATFORM: {target_platform}\n"
         f"USER'S AUDIO PREFERENCE: {audio_preference}\n"
         f"VOICE CLONE AVAILABLE: {'Yes' if has_voice_clone else 'No'}\n"
-        f"TOTAL VIDEO DURATION: {duration_seconds} seconds\n\n"
+        f"TOTAL VIDEO DURATION: {duration_seconds} seconds\n"
+        f"{clip_info}\n"
         "Make your creative editing decisions now. Return only valid JSON."
     )
     import re
@@ -1034,11 +1056,14 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
         status("transcribing")
         work = tempfile.mkdtemp(prefix=f"flicko_{pid[:8]}_")
         local_paths, total_dur = [], 0.0
+        clip_boundaries = []  # list of (start_sec, end_sec) per clip
 
         for i, url in enumerate(req.video_urls):
             p = os.path.join(work, f"src_{i}.mp4")
             _download(url, p)
-            total_dur += _duration(p)
+            dur = _duration(p)
+            clip_boundaries.append((total_dur, total_dur + dur))
+            total_dur += dur
             local_paths.append(p)
 
         if not local_paths:
@@ -1083,6 +1108,7 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
             duration_seconds=total_dur,
             has_voice_clone=req.has_voice_clone,
             creator_patterns=patterns_payload,
+            clip_boundaries=clip_boundaries,
         )
         _update_project(sb_url, sb_key, pid, {"edit_decisions": decision_dict})
 
