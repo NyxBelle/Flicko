@@ -121,7 +121,7 @@ function StageRow({ stage, project, status, visibleSubs, isLast }: StageRowProps
           }}
         >
           {status === "done" ? (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+            <svg key="done" className="scale-in" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 12.5l5 5L20 6.5" />
             </svg>
           ) : status === "active" ? (

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceSupabase } from "@supabase/supabase-js";
-import type { EditDecision, Project } from "@/types";
+import type { EditDecision, MusicMood, MusicEnergy, ColorGrade, Project } from "@/types";
+import { searchJamendoTrack } from "@/lib/music/jamendo";
 
 const WORKER_URL = process.env.OPENSHORTS_SERVICE_URL!;
 const WORKER_KEY = process.env.OPENSHORTS_API_KEY ?? "flicko-dev-key";
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     const { projectId, changes } = await req.json() as {
       projectId: string;
-      changes: Partial<Pick<EditDecision, "caption_style" | "audio_treatment" | "pacing">>;
+      changes: Partial<Pick<EditDecision, "caption_style" | "audio_treatment" | "pacing" | "color_grade" | "music_mood" | "music_energy">>;
     };
 
     if (!projectId || !changes) {
@@ -59,6 +60,19 @@ export async function POST(req: NextRequest) {
       ...changes,
     };
 
+    // When music mood or energy changes, resolve a fresh Jamendo track immediately
+    // so the worker receives a ready-to-use audio URL rather than having to search itself
+    if (changes.music_mood || changes.music_energy) {
+      const mood   = (changes.music_mood   ?? updatedDecision.music_mood   ?? "neutral") as MusicMood;
+      const energy = (changes.music_energy ?? updatedDecision.music_energy ?? "medium")  as MusicEnergy;
+      const segments = updatedDecision.segments ?? [];
+      const editedDuration = segments.reduce(
+        (sum, s) => sum + (s.end - s.start) / (s.speed ?? 1.0), 0
+      );
+      const track = await searchJamendoTrack({ mood, energy, durationSeconds: editedDuration });
+      if (track) updatedDecision.music_track_url = track.audiodownload;
+    }
+
     // Persist updated decision + set status to rendering immediately
     await db.from("projects").update({
       edit_decisions: updatedDecision as unknown as Record<string, unknown>,
@@ -84,6 +98,7 @@ export async function POST(req: NextRequest) {
         supabase_url:         process.env.NEXT_PUBLIC_SUPABASE_URL,
         supabase_service_key: process.env.SUPABASE_SERVICE_ROLE_KEY,
         user_tier:            userTier,
+        jamendo_client_id:    process.env.JAMENDO_CLIENT_ID ?? null,
       }),
       signal: AbortSignal.timeout(15_000),
     });

@@ -7,7 +7,11 @@ def transcribe_video(video_path: str) -> dict:
             "https://api.openai.com/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
             files={"file": (video_path, f, "video/mp4")},
-            data={"model": "whisper-1", "response_format": "verbose_json"}
+            data={
+                "model": "whisper-1",
+                "response_format": "verbose_json",
+                "timestamp_granularities[]": "word",
+            }
         )
     response.raise_for_status()
     result = response.json()
@@ -16,9 +20,11 @@ def transcribe_video(video_path: str) -> dict:
         "segments": [
             {
                 "start": s.get("start"),
-                "end": s.get("end"),
-                "text": s.get("text")
+                "end":   s.get("end"),
+                "text":  s.get("text"),
             }
             for s in result.get("segments", [])
-        ]
+        ],
+        # word-level entries: [{"word": "hello", "start": 0.0, "end": 0.4}, ...]
+        "words": result.get("words", []),
     }

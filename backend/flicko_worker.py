@@ -952,18 +952,34 @@ def _make_edit_decision(
         f"TOTAL VIDEO DURATION: {duration_seconds} seconds\n\n"
         "Make your creative editing decisions now. Return only valid JSON."
     )
-    msg = client.messages.create(
-        model="claude-opus-4-7",
-        max_tokens=2048,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_msg}],
-    )
     import re
-    raw = msg.content[0].text.strip()
-    if raw.startswith("```"):
-        raw = re.sub(r"^```(?:json)?\n?", "", raw)
-        raw = re.sub(r"\n?```$", "", raw)
-    return json.loads(raw)
+    last_exc: Exception = RuntimeError("Claude returned no content")
+    for attempt in range(3):
+        try:
+            msg = client.messages.create(
+                model="claude-opus-4-7",
+                max_tokens=2048,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            content_blocks = list(msg.content)  # force list — SDK may return tuple
+            if not content_blocks:
+                raise RuntimeError(f"Claude returned empty content (stop_reason={msg.stop_reason})")
+            raw = content_blocks[0].text.strip()
+            if raw.startswith("```"):
+                raw = re.sub(r"^```(?:json)?\n?", "", raw)
+                raw = re.sub(r"\n?```$", "", raw)
+            raw = raw.strip()
+            return json.loads(raw)
+        except json.JSONDecodeError as e:
+            last_exc = RuntimeError(f"Claude returned invalid JSON (attempt {attempt+1}): {e}")
+            print(f"[editor] JSON parse failed, retrying: {e}")
+        except Exception as e:
+            last_exc = e
+            print(f"[editor] Attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+    raise last_exc
 
 
 # ─── Full pipeline endpoint (all stages on Railway) ───────────────────────────
@@ -1014,6 +1030,8 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
             total_dur += _duration(p)
             local_paths.append(p)
 
+        if not local_paths:
+            raise RuntimeError("No video files could be downloaded")
         if len(local_paths) > 1:
             lst = os.path.join(work, "concat.txt")
             with open(lst, "w") as f:

@@ -278,6 +278,15 @@ export default function DashboardPage() {
           background: "var(--noir)", borderRadius: 18, padding: "28px 32px",
           marginBottom: 40, textDecoration: "none", position: "relative", overflow: "hidden",
           cursor: "pointer",
+          transition: "transform 0.2s cubic-bezier(.2,.7,.2,1), box-shadow 0.2s",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
+          (e.currentTarget as HTMLElement).style.boxShadow = "0 16px 48px -16px rgba(0,0,0,0.5)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.transform = "";
+          (e.currentTarget as HTMLElement).style.boxShadow = "";
         }}
       >
         <div className="grain" style={{ position: "absolute", inset: 0, pointerEvents: "none" }} />
@@ -354,8 +363,10 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 20 }}>
-          {filtered.map((project) => (
-            <EditCard key={project.id} project={project} />
+          {filtered.map((project, i) => (
+            <div key={project.id} className="rise" style={{ animationDelay: `${Math.min(i * 0.055, 0.33)}s` }}>
+              <EditCard project={project} />
+            </div>
           ))}
         </div>
       )}

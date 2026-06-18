@@ -1,83 +1,113 @@
 import subprocess
 import os
-import json
+
+
+# ── SRT helpers ───────────────────────────────────────────────────────────────
+
+def _fmt_ts(seconds: float) -> str:
+    h  = int(seconds // 3600)
+    m  = int((seconds % 3600) // 60)
+    s  = int(seconds % 60)
+    ms = int((seconds % 1) * 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
 def generate_srt(transcript: dict, output_path: str) -> str:
-    """
-    Convert Whisper transcript segments into an SRT subtitle file.
-    Returns path to the SRT file.
-    """
+    """Sentence-level SRT from Whisper segments (fallback / LinkedIn style)."""
     segments = transcript.get("segments", [])
     if not segments:
         return ""
 
-    srt_content = ""
-    for i, seg in enumerate(segments):
-        start = seg.get("start", 0)
-        end = seg.get("end", 0)
+    lines = []
+    idx = 1
+    for seg in segments:
         text = seg.get("text", "").strip()
-
         if not text:
             continue
+        lines.append(f"{idx}\n{_fmt_ts(seg['start'])} --> {_fmt_ts(seg['end'])}\n{text}\n")
+        idx += 1
 
-        # Format timestamps as HH:MM:SS,mmm
-        def fmt(seconds):
-            h = int(seconds // 3600)
-            m = int((seconds % 3600) // 60)
-            s = int(seconds % 60)
-            ms = int((seconds % 1) * 1000)
-            return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-        srt_content += f"{i+1}\n"
-        srt_content += f"{fmt(start)} --> {fmt(end)}\n"
-        srt_content += f"{text}\n\n"
-
+    content = "\n".join(lines)
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write(srt_content)
-
+        f.write(content)
     return output_path
 
 
-def burn_captions(video_path: str, srt_path: str, output_path: str, style: str = "tiktok") -> str:
+def generate_word_timed_srt(transcript: dict, output_path: str, words_per_chunk: int = 3) -> str:
     """
-    Burn captions into video using FFmpeg.
-    style: "tiktok" = bold white centered, "youtube" = smaller bottom captions
+    Word-level SRT — groups words into small chunks for CapCut-style captions.
+    Falls back to sentence-level if word timestamps aren't available.
     """
+    words = transcript.get("words", [])
+    if not words:
+        return generate_srt(transcript, output_path)
+
+    chunks = []
+    for i in range(0, len(words), words_per_chunk):
+        group = words[i: i + words_per_chunk]
+        start = group[0].get("start", 0)
+        end   = group[-1].get("end", start + 0.5)
+        text  = " ".join(w.get("word", "").strip() for w in group)
+        if text:
+            chunks.append({"start": start, "end": end, "text": text})
+
+    lines = []
+    for idx, chunk in enumerate(chunks, 1):
+        lines.append(f"{idx}\n{_fmt_ts(chunk['start'])} --> {_fmt_ts(chunk['end'])}\n{chunk['text']}\n")
+
+    content = "\n".join(lines)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    return output_path
+
+
+# ── Caption style → FFmpeg ASS force_style ───────────────────────────────────
+
+_STYLES: dict[str, str] = {
+    # Bold white centered — TikTok / Reels default
+    "bold_center": (
+        "FontName=Arial Black,FontSize=20,PrimaryColour=&H00FFFFFF,"
+        "OutlineColour=&H00000000,BackColour=&H80000000,"
+        "Bold=1,Outline=2,Shadow=1,Alignment=2,MarginV=100"
+    ),
+    # Accent-coloured word-by-word pop — viral_highlight
+    "viral_highlight": (
+        "FontName=Arial Black,FontSize=22,PrimaryColour=&H0040D080,"
+        "OutlineColour=&H00000000,Bold=1,Outline=2,Shadow=0,"
+        "Alignment=2,MarginV=100"
+    ),
+    # Quiet lower-third — minimal_bottom
+    "minimal_bottom": (
+        "FontName=Arial,FontSize=14,PrimaryColour=&H00FFFFFF,"
+        "OutlineColour=&H00000000,Bold=0,Outline=1,Shadow=0,"
+        "Alignment=2,MarginV=40"
+    ),
+    # LinkedIn / professional
+    "professional": (
+        "FontName=Arial,FontSize=13,PrimaryColour=&H00FFFFFF,"
+        "BackColour=&HA0000000,Bold=0,Outline=0,Shadow=0,"
+        "Alignment=2,MarginV=30"
+    ),
+    # Legacy aliases
+    "tiktok":   "FontName=Arial Black,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,Bold=1,Outline=2,Shadow=1,Alignment=2,MarginV=80",
+    "youtube":  "FontName=Arial,FontSize=14,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Bold=0,Outline=1,Alignment=2,MarginV=30",
+}
+
+
+def burn_captions(video_path: str, srt_path: str, output_path: str, style: str = "bold_center") -> str:
+    """Burn SRT captions into video with the given style."""
     if not os.path.exists(srt_path):
         return video_path
 
-    if style == "tiktok":
-        # Bold white text, black outline, centered
-        force_style = (
-            "FontName=Arial,"
-            "FontSize=18,"
-            "PrimaryColour=&H00FFFFFF,"
-            "OutlineColour=&H00000000,"
-            "BackColour=&H80000000,"
-            "Bold=1,"
-            "Outline=2,"
-            "Shadow=1,"
-            "Alignment=2,"
-            "MarginV=80"
-        )
-    else:
-        # Smaller, bottom positioned for YouTube
-        force_style = (
-            "FontName=Arial,"
-            "FontSize=14,"
-            "PrimaryColour=&H00FFFFFF,"
-            "OutlineColour=&H00000000,"
-            "Bold=0,"
-            "Outline=1,"
-            "Alignment=2,"
-            "MarginV=30"
-        )
+    force_style = _STYLES.get(style, _STYLES["bold_center"])
+
+    # Escape colons in path for FFmpeg on Windows
+    safe_srt = srt_path.replace("\\", "/").replace(":", "\\:")
 
     subprocess.run([
         "ffmpeg", "-y",
         "-i", video_path,
-        "-vf", f"subtitles={srt_path}:force_style='{force_style}'",
+        "-vf", f"subtitles={safe_srt}:force_style='{force_style}'",
         "-codec:a", "copy",
         output_path
     ], check=True)
@@ -85,27 +115,19 @@ def burn_captions(video_path: str, srt_path: str, output_path: str, style: str =
     return output_path
 
 
+# ── Filler word removal ───────────────────────────────────────────────────────
+
 def remove_filler_words(segments: list) -> list:
-    """
-    Filter out segments that are just filler words.
-    Returns cleaned segments.
-    """
-    filler_words = {
+    filler = {
         "um", "uh", "like", "you know", "i mean",
         "basically", "literally", "actually", "so",
-        "right", "okay", "ok", "yeah", "hmm"
+        "right", "okay", "ok", "yeah", "hmm",
     }
-
     cleaned = []
     for seg in segments:
-        text = seg.get("text", "").strip().lower()
+        text  = seg.get("text", "").strip().lower()
         words = text.split()
-
-        # Skip if segment is only filler words
-        non_filler = [w for w in words if w not in filler_words]
-        if len(non_filler) == 0 and len(words) <= 3:
+        if len(words) <= 3 and all(w in filler for w in words):
             continue
-
         cleaned.append(seg)
-
     return cleaned

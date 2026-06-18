@@ -1,5 +1,25 @@
 export type UserTier = "free" | "starter" | "pro";
 
+export type MusicMood = "energetic" | "happy" | "melancholic" | "chill" | "epic" | "aggressive" | "romantic" | "neutral";
+export type MusicEnergy = "verylow" | "low" | "medium" | "high" | "veryhigh";
+export type ColorGrade = "none" | "normalize" | "warm" | "moody" | "bright_clean" | "cinematic";
+
+export interface BRollHint {
+  after_order: number;
+  duration: number;
+  description: string;
+  search_terms: string[];
+}
+
+export interface JamendoTrack {
+  id: string;
+  name: string;
+  artist_name: string;
+  duration: number;
+  audio: string;
+  audiodownload: string;
+}
+
 export type ProjectStatus =
   | "draft"
   | "transcribing"
@@ -39,6 +59,18 @@ export interface EditDecision {
   caption_style: CaptionStyle;
   energy_level: 1 | 2 | 3 | 4 | 5;
   hook_moment: number;
+  hook_text?: string;
+  thumbnail_moment?: number;
+  content_type?: "talking_head" | "comedy" | "tutorial" | "motivational" | "product_review" | "documentary" | "other";
+  // Music
+  music_mood?: MusicMood;
+  music_energy?: MusicEnergy;
+  music_genre?: string;
+  music_track_url?: string;
+  // Color
+  color_grade?: ColorGrade;
+  // B-roll
+  b_roll_hints?: BRollHint[];
   rationale: string;
   editorial_note: string;
   energy_arc?: string;

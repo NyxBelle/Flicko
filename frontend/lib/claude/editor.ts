@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
-import type { EditDecision, TargetPlatform, AudioTreatment } from "@/types";
+import type { EditDecision, Segment, TargetPlatform, AudioTreatment } from "@/types";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -46,6 +46,7 @@ Choose the hook that does one of:
 (b) Asks a question the viewer physically cannot leave without answering
 (c) Shows the result upfront, creating reverse curiosity (tutorials, transformations)
 The hook is NOT just "the most interesting moment" — it's the one that makes leaving feel impossible.
+Capture the exact words spoken at the hook in "hook_text".
 
 DEAD AIR IS YOUR ENEMY
 Remove: filler words ("um", "uh", "you know", "like"), false starts, repeated statements of the same point, long pauses between thoughts, tangents that don't serve the core. Be ruthless. Every second of dead air is a scroll.
@@ -56,6 +57,13 @@ Set "speed" on individual segments (default 1.0). This is a strong creative tool
 - 2.0 (double speed): montage filler, setup context you need but don't want to dwell on
 - 1.0 (normal): most clips — this should be the majority
 Maximum 1–2 speed-modified segments per edit. More dilutes the effect.
+IMPORTANT: A segment's final duration = (end - start) / speed. A 0.2s clip at 0.5x = 0.1s on screen — avoid this. Every segment must produce at least 0.4s of screen time after the speed modifier.
+
+MULTI-CLIP FOOTAGE
+When segments come from different source clips (e.g., clip 0 vs clip 1), use intercuts deliberately:
+- Don't just play clip 0 then clip 1 — intercut if it serves the story
+- Match the energy level when cutting between clips
+- Use a clip switch at a natural pause or beat, never mid-sentence
 
 ═══════════════════════════════════════════
   CONTENT-TYPE APPROACHES
@@ -80,12 +88,84 @@ DOCUMENTARY / NARRATIVE
 Build before the revelation — withhold the best moment. A held pause before a key statement earns more than fast cutting. Let the final line breathe: add ~1s of post-speech silence.
 
 ═══════════════════════════════════════════
-  PLATFORM DURATION TARGETS
+  PLATFORM OUTPUT DURATION — HARD RULES
 ═══════════════════════════════════════════
-- TikTok/Reels: 15–45s sweet spot. Under 30s for jokes/memes, up to 90s for story.
-- Shorts: Under 60s for algorithm. Hook in first 2s.
-- LinkedIn: 45–90s. Substantive but tight. Professional tone.
-- YouTube: As long as it earns — but cut every 15s that adds no value.
+Your selected segments MUST produce a total final duration (accounting for speed) within these ranges:
+- TikTok / Reels: 18–55s (optimal: 22–38s). Under 30s for jokes/memes; up to 55s for story.
+- Shorts: 18–58s (HARD LIMIT: must be under 60s or the algorithm buries it).
+- LinkedIn: 45–120s. Substantive but tight. Never over 2 minutes.
+- YouTube: 60s minimum, no upper limit — but cut every 15s that adds no value.
+
+If the raw footage doesn't have enough material to hit the minimum, select the best available and note the constraint in the rationale. DO NOT pad with weak material to hit a target.
+
+═══════════════════════════════════════════
+  PLATFORM-SPECIFIC CAPTION DEFAULTS
+═══════════════════════════════════════════
+Match caption style to platform and content tone:
+- TikTok / Reels: bold_center (safe default) or viral_highlight (high-energy content)
+- Shorts: bold_center (YouTube audience expects clean, readable captions)
+- LinkedIn: professional or minimal_bottom — viral_highlight looks amateurish on LinkedIn
+- YouTube: minimal_bottom or none — viewers watch, they don't scroll-scan
+
+Override if the content tone strongly demands it, but justify it in the rationale.
+
+═══════════════════════════════════════════
+  SEGMENT QUALITY RULES
+═══════════════════════════════════════════
+Before finalising, check every segment:
+1. Final screen time (end - start) / speed ≥ 0.4s — cut anything shorter
+2. No overlapping timestamp ranges between segments at the same order position
+3. start < end (never reversed)
+4. All timestamps within the total video duration provided
+5. Every "reason" must name a specific moment ("she lands the punchline at 1:43") — never generic ("interesting moment")
+
+═══════════════════════════════════════════
+  MUSIC SELECTION
+═══════════════════════════════════════════
+Choose background music that serves the emotional tone of the edit.
+
+music_mood: energetic | happy | melancholic | chill | epic | aggressive | romantic | neutral
+music_energy: verylow | low | medium | high | veryhigh
+music_genre: (optional) electronic | rock | hiphop | ambient | classical | folk | pop | jazz
+
+Platform defaults:
+- TikTok / Reels high-energy: energetic or happy, energy = high or veryhigh
+- TikTok / Reels storytelling: chill or melancholic, energy = low or medium
+- LinkedIn: neutral or chill, energy = low — never aggressive or veryhigh
+- YouTube tutorial: neutral or happy, energy = medium
+- Motivational / speech: epic or energetic, energy = high
+- Comedy / skit: happy or energetic, energy = medium or high
+
+If audio_treatment is "voiceover" only, set music_mood = neutral and music_energy = low (music sits far back).
+If the creator has no music preference, choose what genuinely fits the emotional arc.
+
+═══════════════════════════════════════════
+  COLOR GRADE
+═══════════════════════════════════════════
+Choose a color grade to unify the visual feel across all clips.
+
+color_grade options:
+- none: raw footage, no grade (only if footage is already well-shot and consistent)
+- normalize: normalize exposure and white balance across clips — best default for mixed sources
+- warm: golden, amber tones — food, lifestyle, travel, personal brand content
+- moody: desaturated, high contrast, cinematic shadows — drama, storytelling, narrative
+- bright_clean: lifted highlights, crisp and airy — tutorials, product demos, LinkedIn
+- cinematic: film-like with slight desaturation and lifted blacks — documentary, brand film
+
+Default to "normalize" for most content. Use other grades when the content and platform strongly call for it. LinkedIn = bright_clean or normalize. TikTok lifestyle = warm. Documentary = cinematic.
+
+═══════════════════════════════════════════
+  B-ROLL HINTS
+═══════════════════════════════════════════
+If specific moments in the edit would be stronger with a visual cutaway (a product being used, hands demonstrating a technique, a screen recording, a location shot), include b_roll_hints. Max 2 hints.
+
+Each hint:
+- after_order: insert after the segment with this order number
+- duration: seconds of b-roll needed (1–4s)
+- description: what the b-roll should visually show
+- search_terms: 2–3 short terms for stock footage search (e.g. ["hands typing laptop", "coffee shop"])
+
+Omit b_roll_hints entirely if no cutaways would improve the edit. Most talking-head edits don't need b-roll.
 
 ═══════════════════════════════════════════
   RATIONALE QUALITY
@@ -103,7 +183,7 @@ Return ONLY a valid JSON object. No markdown. No explanation outside the JSON.
       "start": 0.0,
       "end": 0.0,
       "order": 1,
-      "reason": "one-sentence reason this moment was kept",
+      "reason": "specific reason referencing the actual moment",
       "speed": 1.0
     }
   ],
@@ -113,7 +193,22 @@ Return ONLY a valid JSON object. No markdown. No explanation outside the JSON.
   "caption_style": "bold_center",
   "energy_level": 4,
   "hook_moment": 0.0,
+  "hook_text": "The exact words/phrase spoken at the hook cut-in",
+  "thumbnail_moment": 0.0,
+  "content_type": "talking_head",
   "energy_arc": "hook(absurd opener) → tight setup (6s) → punchline hold (2s) → reaction slow-mo → out",
+  "music_mood": "energetic",
+  "music_energy": "high",
+  "music_genre": "electronic",
+  "color_grade": "normalize",
+  "b_roll_hints": [
+    {
+      "after_order": 2,
+      "duration": 3,
+      "description": "what the b-roll should show",
+      "search_terms": ["search term 1", "search term 2"]
+    }
+  ],
   "rationale": "Specific to this content — reference actual moments from the transcript by timestamp and explain WHY, not what.",
   "editorial_note": "One sentence of directorial thinking in conversational tone.",
   "suggested_title": "Optional"
@@ -125,6 +220,10 @@ AUDIO: flicko_decides | voiceover | trending_sound
 CAPTION: bold_center | minimal_bottom | viral_highlight | professional | none
 ENERGY: 1 (calm/reflective) to 5 (maximum hype)
 SPEED per segment: 0.5 (slow-mo) | 1.0 (normal) | 2.0 (double speed)
+CONTENT TYPE: talking_head | comedy | tutorial | motivational | product_review | documentary | other
+MUSIC MOOD: energetic | happy | melancholic | chill | epic | aggressive | romantic | neutral
+MUSIC ENERGY: verylow | low | medium | high | veryhigh
+COLOR GRADE: none | normalize | warm | moody | bright_clean | cinematic
 
 If the user's audio preference conflicts with the content, use your judgment and note the override in the rationale.`;
 
@@ -177,6 +276,22 @@ interface EditorInput {
   hasVoiceClone: boolean;
   openShortsClips?: OpenShortsClip[];
   userId?: string;
+}
+
+function cleanSegments(segments: Segment[], videoDurationSeconds: number): Segment[] {
+  return segments
+    .filter((s) => typeof s.start === "number" && typeof s.end === "number" && s.end > s.start)
+    .map((s) => ({
+      ...s,
+      start: Math.max(0, s.start),
+      end:   Math.min(s.end, videoDurationSeconds),
+      speed: s.speed ?? 1.0,
+    }))
+    .filter((s) => {
+      const screenTime = (s.end - s.start) / (s.speed ?? 1.0);
+      return screenTime >= 0.4;
+    })
+    .sort((a, b) => a.order - b.order);
 }
 
 export async function makeEditDecision(input: EditorInput): Promise<EditDecision> {
@@ -253,6 +368,12 @@ Make your creative editing decisions now. Return only valid JSON.`;
   }
   if (!decision.rationale) {
     throw new Error("Claude returned no rationale");
+  }
+
+  // Clean segments: remove sub-threshold clips, clamp to video bounds, sort by order
+  decision.segments = cleanSegments(decision.segments, input.videoDurationSeconds);
+  if (decision.segments.length === 0) {
+    throw new Error("No valid segments remained after validation");
   }
 
   return decision;

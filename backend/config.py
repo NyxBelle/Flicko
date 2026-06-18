@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     FLUTTERWAVE_SECRET_KEY: str = ""
     FLUTTERWAVE_WEBHOOK_SECRET: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
+    PEXELS_API_KEY: str = ""
 
     class Config:
         env_file = ".env"

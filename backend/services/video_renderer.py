@@ -2,6 +2,26 @@ import subprocess
 import os
 
 
+COLOR_GRADE_FILTERS: dict[str, str] = {
+    # Normalize: lift shadow clip, gentle S-curve for punch
+    "normalize":    "eq=brightness=0:saturation=1.0,curves=master='0/0 0.15/0.17 0.85/0.83 1/1'",
+    # Warm: push reds/greens up, pull blues down
+    "warm":         "curves=r='0/0 0.5/0.56 1/1':g='0/0 0.5/0.52 1/1':b='0/0 0.5/0.44 1/1'",
+    # Moody: desaturate, lift blacks slightly, reduce highlight ceiling
+    "moody":        "eq=saturation=0.72:contrast=1.08,curves=master='0/0.04 0.5/0.46 1/0.94'",
+    # Bright & clean: slight brightness lift, clean highlights, mild desaturate
+    "bright_clean": "eq=brightness=0.04:saturation=0.93:contrast=0.96,curves=master='0/0 0.75/0.80 1/1'",
+    # Cinematic: lifted blacks, pulled whites, muted saturation
+    "cinematic":    "eq=saturation=0.78:contrast=1.04,curves=master='0/0.03 0.5/0.48 1/0.97'",
+}
+
+
+def _build_vf(color_grade: str | None) -> str:
+    base = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2"
+    grade = COLOR_GRADE_FILTERS.get(color_grade or "normalize")
+    return f"{base},{grade}" if grade else base
+
+
 def render_video(
     edit_plan: dict,
     source_dir: str,
@@ -11,18 +31,27 @@ def render_video(
     clips = edit_plan["clips"]
     tmp_clips = []
 
-    # Step 1: Trim each clip
+    color_grade = edit_plan.get("color_grade")
+    vf = _build_vf(color_grade)
+
+    # Step 1: Trim each clip (apply color grade per-clip for consistency)
     for i, clip in enumerate(clips):
         src = os.path.join(source_dir, clip["source_file"])
         tmp = os.path.join(source_dir, f"_tmp_{i}.mp4")
 
-        # Re-encode for compatibility
+        speed = clip.get("speed", 1.0)
+        extra_filters = []
+        if speed and speed != 1.0:
+            extra_filters.append(f"setpts={round(1.0/speed, 4)}*PTS")
+
+        full_vf = vf + ("," + ",".join(extra_filters) if extra_filters else "")
+
         subprocess.run([
             "ffmpeg", "-y",
             "-ss", str(clip["start_sec"]),
             "-to", str(clip["end_sec"]),
             "-i", src,
-            "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
+            "-vf", full_vf,
             "-r", "30",
             "-c:v", "libx264",
             "-c:a", "aac",

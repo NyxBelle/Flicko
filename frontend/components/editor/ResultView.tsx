@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { EditDecision, CaptionStyle } from "@/types";
+import type { EditDecision, CaptionStyle, MusicMood, MusicEnergy, ColorGrade } from "@/types";
 import { VPreview } from "./VPreview";
 
 // ── Inline SVG icons (match design spec: 24×24, 1.7 stroke, round caps) ──────
@@ -27,6 +27,8 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     case "frame-sm":  return <svg {...p} width={12} height={12}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M8 5v14"/></svg>;
     case "sparkles":  return <svg {...p}><path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z"/><path d="M18 15l.7 1.9 1.9.7-1.9.7L18 21l-.7-1.9-1.9-.7 1.9-.7z"/></svg>;
     case "trend":     return <svg {...p}><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg>;
+    case "music":     return <svg {...p}><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>;
+    case "palette":   return <svg {...p}><circle cx="12" cy="12" r="9"/><path d="M12 3a4.5 4.5 0 0 0 0 9h.5a2 2 0 0 1 2 2 2 2 0 0 0 2 2 2 2 0 0 0 2-2c0-4.97-4.03-9-9-9z"/></svg>;
     default: return null;
   }
 }
@@ -130,6 +132,32 @@ const DECISIONS: DecisionDef[] = [
       { label: "Full narrated intro",  title: "A cloned-voice line sets up the premise.",     body: "A one-line narrated intro before the footage starts — useful when the raw open needs a bit more context.", fieldValue: "voiceover" },
     ],
   },
+  {
+    id: "music_vibe",
+    icon: "music",
+    tag: "Music",
+    control: "chips",
+    field: "music_mood",
+    options: [
+      { label: "High energy",   title: "High-energy track — drives the pace forward.",     body: "An upbeat, driving instrumental sits under the edit. Synced to the energy arc — it lifts on the peak and drops on the out.", fieldValue: "energetic" },
+      { label: "Chill & warm",  title: "A warm, low-key instrumental bed.",               body: "Understated and smooth. Keeps the focus on what you're saying — the music supports without competing.", fieldValue: "chill" },
+      { label: "Emotional",     title: "A softer, more emotional track underneath.",       body: "Works well when the content has weight — a personal story, a reveal, something the viewer should feel.", fieldValue: "melancholic" },
+      { label: "Epic / cinematic", title: "Big, cinematic sound — makes the stakes feel real.", body: "Reserved for content that earns it: a transformation, a pitch, a big moment. Overuse kills the effect.", fieldValue: "epic" },
+    ],
+  },
+  {
+    id: "color_grade",
+    icon: "palette",
+    tag: "Color",
+    control: "chips",
+    field: "color_grade",
+    options: [
+      { label: "Normalize",     title: "Balanced and clean — exposure matched across clips.",  body: "White balance and exposure normalized so all your clips feel like they were shot together. The safest, most professional starting point.", fieldValue: "normalize" },
+      { label: "Warm & golden", title: "Golden, amber tones — lifestyle and personal brand.",  body: "Adds warmth across the grade. Great for food, travel, or any content where you want the viewer to feel something cozy.", fieldValue: "warm" },
+      { label: "Moody",         title: "Desaturated, high contrast — cinematic weight.",       body: "Darker, richer shadows and pulled-back saturation. Used in documentary and storytelling — creates emotional gravity.", fieldValue: "moody" },
+      { label: "Bright & clean", title: "Lifted, airy — crisp and professional.",             body: "Open highlights and clean midtones. Best for tutorials, product content, and LinkedIn where clarity reads as credibility.", fieldValue: "bright_clean" },
+    ],
+  },
 ];
 
 // ── Derive initial selections from Claude's EditDecision ──────────────────────
@@ -156,13 +184,29 @@ const CAPTION_TO_OPTION: Record<string, number> = {
   none:            1,
 };
 
+const MUSIC_MOOD_TO_OPTION: Record<string, number> = {
+  energetic: 0, happy: 0,
+  chill: 1, neutral: 1, romantic: 1,
+  melancholic: 2, aggressive: 2,
+  epic: 3,
+};
+
+const COLOR_GRADE_TO_OPTION: Record<string, number> = {
+  normalize: 0, none: 0,
+  warm: 1,
+  moody: 2, cinematic: 2,
+  bright_clean: 3,
+};
+
 function deriveSelections(ed: EditDecision): Record<string, number> {
   return {
-    open:     0,
-    reframe:  0,
-    sound:    ed.audio_treatment === "trending_sound" ? 0 : 1,
-    captions: CAPTION_TO_OPTION[ed.caption_style] ?? 0,
-    voice:    ed.audio_treatment === "voiceover" ? 0 : 1,
+    open:        0,
+    reframe:     0,
+    sound:       ed.audio_treatment === "trending_sound" ? 0 : 1,
+    captions:    CAPTION_TO_OPTION[ed.caption_style] ?? 0,
+    voice:       ed.audio_treatment === "voiceover" ? 0 : 1,
+    music_vibe:  MUSIC_MOOD_TO_OPTION[ed.music_mood ?? "neutral"] ?? 0,
+    color_grade: COLOR_GRADE_TO_OPTION[ed.color_grade ?? "normalize"] ?? 0,
   };
 }
 
@@ -275,9 +319,10 @@ function DecisionCard({ dec, applied, pacing, open, recutting, onToggle, onApply
             {open ? "Close" : "Adjust this"}
           </button>
 
-          {/* Expanded controls */}
-          {open && (
-            <div className="rise" style={{ marginTop: 14 }}>
+          {/* Expanded controls — smooth accordion */}
+          <div className={`card-accordion-body${open ? " open" : ""}`}>
+            <div className="card-accordion-inner">
+            <div style={{ marginTop: 14, paddingBottom: 4 }}>
               {isSlider ? (
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 9 }}>
@@ -379,7 +424,8 @@ function DecisionCard({ dec, applied, pacing, open, recutting, onToggle, onApply
                 </div>
               )}
             </div>
-          )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -392,6 +438,9 @@ export interface AdjustPayload {
   caption_style?: CaptionStyle;
   audio_treatment?: EditDecision["audio_treatment"];
   pacing?: EditDecision["pacing"];
+  color_grade?: ColorGrade;
+  music_mood?: MusicMood;
+  music_energy?: MusicEnergy;
 }
 
 // ── Performance tracker ───────────────────────────────────────────────────────
@@ -560,8 +609,10 @@ export function ResultView({ project, videoSrc, recutting = false, onAdjust, onD
     const option = dec.options![idx];
     if (!option.fieldValue || !dec.field) return; // no mapping — UI only
     const changes: AdjustPayload = {};
-    if (dec.field === "caption_style") changes.caption_style = option.fieldValue as CaptionStyle;
+    if (dec.field === "caption_style")   changes.caption_style   = option.fieldValue as CaptionStyle;
     else if (dec.field === "audio_treatment") changes.audio_treatment = option.fieldValue as EditDecision["audio_treatment"];
+    else if (dec.field === "color_grade")  changes.color_grade   = option.fieldValue as ColorGrade;
+    else if (dec.field === "music_mood")   changes.music_mood    = option.fieldValue as MusicMood;
     await onAdjust(changes);
   };
 
@@ -591,13 +642,18 @@ export function ResultView({ project, videoSrc, recutting = false, onAdjust, onD
     </div>
   );
 
+  const currentMusicMood  = ed.music_mood   ?? "neutral";
+  const currentColorGrade = ed.color_grade  ?? "normalize";
+
   const summaryChips = (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
       {[
         { icon: "clock",    label: "0:38 runtime" },
         { icon: "frame",    label: "9:16 vertical" },
-        { icon: "sparkles", label: "6 decisions" },
+        { icon: "sparkles", label: "8 decisions" },
         { icon: "trend",    label: `${pacing.toFixed(1)}s pace` },
+        { icon: "music",    label: currentMusicMood },
+        { icon: "palette",  label: currentColorGrade.replace("_", " ") },
       ].map(({ icon, label }) => (
         <span key={label} className="chip" style={{ gap: 7 }}>
           <Icon name={icon} size={12} /> {label}
@@ -641,19 +697,20 @@ export function ResultView({ project, videoSrc, recutting = false, onAdjust, onD
         </div>
       )}
 
-      {/* 6 Decision rows */}
-      {DECISIONS.map((dec) => (
-        <DecisionCard
-          key={dec.id}
-          dec={dec}
-          applied={selections[dec.id] ?? 0}
-          pacing={pacing}
-          open={openId === dec.id}
-          recutting={recutId === dec.id}
-          onToggle={() => setOpenId(o => o === dec.id ? null : dec.id)}
-          onApplyChip={(idx) => applyChip(dec.id, idx, dec)}
-          onApplyPace={applyPace}
-        />
+      {/* 6 Decision rows — staggered entrance */}
+      {DECISIONS.map((dec, idx) => (
+        <div key={dec.id} className="rise" style={{ animationDelay: `${idx * 0.065}s` }}>
+          <DecisionCard
+            dec={dec}
+            applied={selections[dec.id] ?? 0}
+            pacing={pacing}
+            open={openId === dec.id}
+            recutting={recutId === dec.id}
+            onToggle={() => setOpenId(o => o === dec.id ? null : dec.id)}
+            onApplyChip={(idx) => applyChip(dec.id, idx, dec)}
+            onApplyPace={applyPace}
+          />
+        </div>
       ))}
 
       {/* Card footer */}
@@ -675,15 +732,17 @@ export function ResultView({ project, videoSrc, recutting = false, onAdjust, onD
   );
 
   const player = (w: number) => (
-    <VPreview
-      phase="done"
-      videoSrc={videoSrc}
-      playing={playing}
-      onTogglePlay={() => setPlaying(p => !p)}
-      captionStyle={previewCaptionStyle}
-      recutting={recutting}
-      width={w}
-    />
+    <div key={videoSrc ?? "loading"} className={videoSrc ? "fade-in" : undefined}>
+      <VPreview
+        phase="done"
+        videoSrc={videoSrc}
+        playing={playing}
+        onTogglePlay={() => setPlaying(p => !p)}
+        captionStyle={previewCaptionStyle}
+        recutting={recutting}
+        width={w}
+      />
+    </div>
   );
 
   return (
