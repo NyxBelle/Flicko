@@ -573,8 +573,17 @@ def _run_remotion(
         chromium_path = os.getenv("PUPPETEER_EXECUTABLE_PATH", "/usr/bin/chromium")
         if os.path.exists(chromium_path):
             render_cmd.append(f"--browser-executable-path={chromium_path}")
-        render_cmd.append("--gl=angle")
-        render_cmd.append("--chromium-flags=--no-sandbox --disable-setuid-sandbox")
+        # swangle = Vulkan-backed software WebGL — works in any headless Docker container
+        # without hardware GPU. Safer than angle (requires EGL) or swiftshader (too slow).
+        render_cmd.append("--gl=swangle")
+        # Pass each Chromium flag separately so the CLI parser sees them individually.
+        # --disable-dev-shm-usage is critical: Docker /dev/shm is only 64 MB by default,
+        # which causes headless Chrome to crash mid-render without this flag.
+        render_cmd += [
+            "--chromium-flags=--no-sandbox",
+            "--chromium-flags=--disable-setuid-sandbox",
+            "--chromium-flags=--disable-dev-shm-usage",
+        ]
 
     try:
         result = subprocess.run(
@@ -586,11 +595,18 @@ def _run_remotion(
             shell=_IS_WINDOWS,
         )
         if result.returncode != 0:
-            print(f"[remotion] render failed:\n{result.stderr[-1500:]}")
+            print(f"[remotion] render failed (exit {result.returncode}):\nSTDOUT:\n{result.stdout[-800:]}\nSTDERR:\n{result.stderr[-1500:]}")
             return False
-        return os.path.exists(out_path)
-    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-        print(f"[remotion] Error: {e}")
+        if not os.path.exists(out_path):
+            print(f"[remotion] render returned 0 but output file missing at {out_path}")
+            return False
+        print(f"[remotion] render OK → {out_path}")
+        return True
+    except subprocess.TimeoutExpired:
+        print("[remotion] render timed out after 600s — falling back to FFmpeg")
+        return False
+    except FileNotFoundError as e:
+        print(f"[remotion] binary not found ({e}) — falling back to FFmpeg")
         return False
     finally:
         # Clean up public clips and props file

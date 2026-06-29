@@ -33,6 +33,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxss1 \
     libgl1-mesa-dri \
     libgl1 \
+    libegl1 \
+    libgles2 \
+    libvulkan1 \
+    mesa-vulkan-drivers \
     fonts-liberation \
     fonts-noto-core \
     fonts-noto-color-emoji \
