@@ -137,6 +137,7 @@ class Segment(BaseModel):
     order: int
     reason: str
     speed: Optional[float] = 1.0  # 0.5 = slow-mo, 1.0 = normal, 2.0 = double speed
+    zoom_in: Optional[bool] = False  # slow Ken Burns zoom for key moments
 
 
 class EditDecision(BaseModel):
@@ -218,28 +219,27 @@ def _upload_supabase(path: str, supabase_url: str, key: str, dest: str) -> None:
 def _ffmpeg_cut(src: str, ls: float, le: float, vf_str: str, out: str, speed: float = 1.0) -> None:
     speed = speed if speed and speed > 0 else 1.0
     video_filter = vf_str
-    audio_filters = []
+    # afftdn removes broadband noise (hiss, hum, wind, AC) without audible artifacts
+    audio_filters = ["afftdn=nf=-25"]
 
     if abs(speed - 1.0) > 0.05:
         pts = 1.0 / speed
         video_filter = f"{vf_str},setpts={pts:.4f}*PTS"
-        # atempo range is 0.5–2.0; chain two passes for extreme values
         if speed <= 0.5:
-            audio_filters = ["atempo=0.5", "atempo=1.0"]  # 0.5x
+            audio_filters += ["atempo=0.5", "atempo=1.0"]
         elif speed >= 2.0:
-            audio_filters = ["atempo=2.0"]
+            audio_filters += ["atempo=2.0"]
         else:
-            audio_filters = [f"atempo={speed:.4f}"]
+            audio_filters += [f"atempo={speed:.4f}"]
 
     cmd = [
         "ffmpeg", "-y",
         "-ss", f"{ls:.4f}", "-to", f"{le:.4f}", "-i", src,
         "-vf", video_filter,
         "-r", "30", "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+        "-af", ",".join(audio_filters),
+        "-c:a", "aac", "-ar", "44100", "-ac", "2", out,
     ]
-    if audio_filters:
-        cmd += ["-af", ",".join(audio_filters)]
-    cmd += ["-c:a", "aac", "-ar", "44100", "-ac", "2", out]
     subprocess.run(cmd, check=True, capture_output=True)
 
 
@@ -284,7 +284,7 @@ def _transcribe_local(video_path: str) -> tuple:
 # ─── Remotion renderer (open source) ─────────────────────────────────────────
 
 def _group_to_phrase_captions(words: list, fps: int = 30, max_words: int = 4) -> list:
-    """Group word-level timestamps into caption phrases with frame numbers."""
+    """Group word-level timestamps into caption phrases with per-word frame offsets for karaoke highlighting."""
     captions, buf = [], []
     for w in words:
         buf.append(w)
@@ -293,6 +293,7 @@ def _group_to_phrase_captions(words: list, fps: int = 30, max_words: int = 4) ->
                 "text": " ".join(x["word"] for x in buf),
                 "startFrame": int(buf[0]["start"] * fps),
                 "endFrame": int(buf[-1]["end"] * fps),
+                "words": [{"word": x["word"], "startFrame": int(x["start"] * fps)} for x in buf],
             })
             buf = []
     if buf:
@@ -300,6 +301,7 @@ def _group_to_phrase_captions(words: list, fps: int = 30, max_words: int = 4) ->
             "text": " ".join(x["word"] for x in buf),
             "startFrame": int(buf[0]["start"] * fps),
             "endFrame": int(buf[-1]["end"] * fps),
+            "words": [{"word": x["word"], "startFrame": int(x["start"] * fps)} for x in buf],
         })
     return captions
 
@@ -487,6 +489,7 @@ def _run_remotion(
     ed: EditDecision,
     platform: str,
     out_path: str,
+    extracted_segs: Optional[list] = None,
 ) -> bool:
     if not USE_REMOTION:
         return False
@@ -506,10 +509,11 @@ def _run_remotion(
         shutil.copy2(path, os.path.join(RENDERER_PUBLIC, name))
         clip_names.append(name)
 
+    segs_for_clips = extracted_segs if extracted_segs and len(extracted_segs) == len(clip_names) else [None] * len(clip_names)
     props = {
         "clips": [
-            {"name": name, "durationInFrames": max(1, int(dur * fps))}
-            for name, dur in zip(clip_names, clip_durations)
+            {"name": name, "durationInFrames": max(1, int(dur * fps)), "zoomIn": bool(seg.zoom_in) if seg else False}
+            for name, dur, seg in zip(clip_names, clip_durations, segs_for_clips)
         ],
         "captions": captions,
         "captionStyle": ed.caption_style,
@@ -708,7 +712,7 @@ def _do_render(
 
         # 2. Extract segments in Claude's editorial order
         segs = sorted(ed.segments, key=lambda s: s.order)
-        extracted, ext_durs = [], []
+        extracted, ext_durs, extracted_segs = [], [], []
 
         for idx, seg in enumerate(segs):
             gs, ge = seg.start, seg.end
@@ -736,6 +740,7 @@ def _do_render(
             if os.path.exists(out):
                 extracted.append(out)
                 ext_durs.append(_duration(out))
+                extracted_segs.append(seg)
 
         if not extracted:
             raise ValueError("No segments extracted — check edit_decision timestamps")
@@ -761,7 +766,7 @@ def _do_render(
         final = os.path.join(work, "final.mp4")
         renderer_used = "remotion"
 
-        if not _run_remotion(job_id, extracted, ext_durs, phrase_captions, ed, platform, final):
+        if not _run_remotion(job_id, extracted, ext_durs, phrase_captions, ed, platform, final, extracted_segs):
             renderer_used = "ffmpeg"
             print("[worker] Falling back to FFmpeg concat (no transitions/captions)")
             concat_list = os.path.join(work, "concat.txt")
@@ -943,6 +948,11 @@ SPEED MODIFIERS — use sparingly (max 1–2 per edit)
 - 2.0 (double speed): montage filler, setup context
 - 1.0 (normal): most clips
 
+ZOOM IN — set "zoom_in": true on 1–2 segments maximum per edit.
+Use for: the hook moment, a punchline reveal, an emotional peak, or a dramatic statement.
+A slow Ken Burns zoom will be applied — the shot gradually pushes in over the clip's duration.
+Do NOT zoom every clip. Zero zoom is better than overuse. Never zoom on fast cuts under 1.5s.
+
 PLATFORM TARGETS
 - TikTok/Reels: 15–45s
 - Shorts: under 60s
@@ -986,7 +996,7 @@ CAPTION COLOR — pick ONE hex color that matches this video's energy and vibe.
 
 Return ONLY a valid JSON object, no markdown:
 {
-  "segments": [{"start": 0.0, "end": 0.0, "order": 1, "reason": "...", "speed": 1.0}],
+  "segments": [{"start": 0.0, "end": 0.0, "order": 1, "reason": "...", "speed": 1.0, "zoom_in": false}],
   "pacing": "fast",
   "transition_type": "cut",
   "audio_treatment": "trending_sound",
