@@ -88,6 +88,8 @@ export default function EditorPage() {
   const [outcome, setOutcome] = useState<string | null>(null);
   const [userTier] = useState<"free" | "starter" | "pro">("free");
   const [submitting, setSubmitting] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState<"idle" | "uploading" | "processing">("idle");
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const canSubmit = files.length > 0 && title.trim().length > 0 && contentContext.trim().length > 10;
 
@@ -95,10 +97,12 @@ export default function EditorPage() {
     e.preventDefault();
     if (!canSubmit || submitting) return;
     setSubmitting(true);
+    setUploadPhase("uploading");
+    setUploadProgress(0);
 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { toast.error("You must be signed in."); setSubmitting(false); return; }
+    if (!user) { toast.error("You must be signed in."); setSubmitting(false); setUploadPhase("idle"); return; }
 
     try {
       const { data: project, error: projectError } = await supabase
@@ -118,15 +122,45 @@ export default function EditorPage() {
 
       if (projectError || !project) throw new Error(projectError?.message ?? "Failed to create project");
 
+      // Use XHR for upload so we get real onprogress events
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+      const totalBytes = files.reduce((sum, { file }) => sum + file.size, 0);
+      const loadedByIndex = files.map(() => 0);
+
+      const uploadFile = (file: File, path: string, idx: number): Promise<void> =>
+        new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", `${supabaseUrl}/storage/v1/object/videos/${encodeURIComponent(path)}`);
+          xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+          xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+          xhr.setRequestHeader("x-upsert", "false");
+          xhr.upload.onprogress = (ev) => {
+            if (!ev.lengthComputable) return;
+            loadedByIndex[idx] = ev.loaded;
+            const totalLoaded = loadedByIndex.reduce((a, b) => a + b, 0);
+            setUploadProgress(Math.min(99, Math.round((totalLoaded / totalBytes) * 100)));
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) { resolve(); }
+            else { reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`)); }
+          };
+          xhr.onerror = () => reject(new Error("Upload failed — check your connection and try again"));
+          xhr.send(file);
+        });
+
       const uploadedUrls = await Promise.all(
-        files.map(async ({ file }) => {
+        files.map(({ file }, idx) => {
           const ext = file.name.split(".").pop();
           const path = `${user.id}/${project.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-          const { error: uploadError } = await supabase.storage.from("videos").upload(path, file, { contentType: file.type });
-          if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
-          return path;
+          return uploadFile(file, path, idx).then(() => path);
         })
       );
+
+      setUploadProgress(100);
+      setUploadPhase("processing");
 
       await supabase.from("projects").update({ video_urls: uploadedUrls, status: "transcribing" }).eq("id", project.id);
 
@@ -145,6 +179,8 @@ export default function EditorPage() {
     } catch (err) {
       toast.error((err as Error).message);
       setSubmitting(false);
+      setUploadPhase("idle");
+      setUploadProgress(0);
     }
   };
 
@@ -362,18 +398,39 @@ export default function EditorPage() {
             disabled={!canSubmit || submitting}
             className="btn btn-accent btn-lg"
             style={{
-              width: "100%", justifyContent: "center",
-              opacity: !canSubmit || submitting ? 0.5 : 1,
+              width: "100%", justifyContent: "center", position: "relative", overflow: "hidden",
+              opacity: !canSubmit || submitting ? 0.85 : 1,
               cursor: !canSubmit || submitting ? "not-allowed" : "pointer",
             }}
           >
-            {submitting ? (
+            {/* Upload progress fill */}
+            {uploadPhase === "uploading" && (
+              <span style={{
+                position: "absolute", inset: 0, left: 0,
+                width: `${uploadProgress}%`,
+                background: "rgba(255,255,255,0.15)",
+                transition: "width 0.3s ease",
+                pointerEvents: "none",
+              }} />
+            )}
+
+            {uploadPhase === "uploading" ? (
               <>
-                <span className="spin" style={{
-                  width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)",
+                <span style={{
+                  width: 14, height: 14, border: "2px solid rgba(255,255,255,0.35)",
                   borderTopColor: "#fff", borderRadius: "50%", display: "inline-block",
+                  animation: "spin 0.8s linear infinite",
                 }} />
-                Uploading and starting edit…
+                Uploading{files.length > 1 ? ` ${files.length} videos` : ""}… {uploadProgress}%
+              </>
+            ) : uploadPhase === "processing" ? (
+              <>
+                <span style={{
+                  width: 14, height: 14, border: "2px solid rgba(255,255,255,0.35)",
+                  borderTopColor: "#fff", borderRadius: "50%", display: "inline-block",
+                  animation: "spin 0.8s linear infinite",
+                }} />
+                Starting edit…
               </>
             ) : (
               <>
