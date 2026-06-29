@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
         has_voice_clone:      hasVoiceClone,
         creator_patterns:     creatorPatterns ?? [],
         user_tier:            usageCheck.tier,
+        style_preset:         p.style_preset ?? null,
         jamendo_client_id:    process.env.JAMENDO_CLIENT_ID ?? null,
       }),
       signal: AbortSignal.timeout(15_000),

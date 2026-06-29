@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { EditDecision, CaptionStyle, MusicMood, MusicEnergy, ColorGrade } from "@/types";
+import type { EditDecision, CaptionStyle, MusicMood, MusicEnergy, ColorGrade, RefinementEntry } from "@/types";
 import { VPreview } from "./VPreview";
 
 // ── Inline SVG icons (match design spec: 24×24, 1.7 stroke, round caps) ──────
@@ -434,6 +434,93 @@ function DecisionCard({ dec, applied, pacing, open, recutting, onToggle, onApply
 
 // ── ResultView ────────────────────────────────────────────────────────────────
 
+// ── Refinement feedback input ─────────────────────────────────────────────────
+
+function RefineFeedback({ onRefine, history, refining }: {
+  onRefine: (feedback: string) => Promise<void>;
+  history: RefinementEntry[];
+  refining: boolean;
+}) {
+  const [value, setValue] = useState("");
+  const [focused, setFocused] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!value.trim() || refining) return;
+    const fb = value.trim();
+    setValue("");
+    await onRefine(fb);
+  };
+
+  return (
+    <div style={{ marginTop: 16, border: "1px solid var(--line)", borderRadius: 16, overflow: "hidden" }}>
+      <div style={{ padding: "13px 18px", background: "var(--paper-2)", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 9 }}>
+        <Icon name="wand" size={15} />
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>Refine this edit</span>
+        <span style={{ fontSize: 12, color: "var(--faint)", fontFamily: "var(--font-mono), monospace", letterSpacing: "0.04em" }}>plain English</span>
+      </div>
+
+      <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {history.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {history.map((h, i) => (
+              <span key={i} style={{
+                fontSize: 11.5, padding: "3px 9px", borderRadius: 999,
+                background: "var(--paper-2)", border: "1px solid var(--line-2)",
+                color: "var(--muted)",
+              }}>
+                ↩ {h.feedback}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <textarea
+            rows={2}
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSubmit(); } }}
+            placeholder={`What would you like to change? e.g. "Make the hook shorter" or "more energy in the second half"`}
+            disabled={refining}
+            style={{
+              flex: 1, resize: "none",
+              background: "var(--card)",
+              border: `1px solid ${focused ? "var(--ink)" : "var(--line-2)"}`,
+              borderRadius: 10, padding: "10px 13px",
+              fontSize: 13.5, color: "var(--ink)", outline: "none",
+              fontFamily: "var(--font-sans), system-ui, sans-serif",
+              lineHeight: 1.5, transition: "border-color .15s",
+              opacity: refining ? 0.6 : 1,
+            }}
+          />
+          <button
+            onClick={() => void handleSubmit()}
+            disabled={!value.trim() || refining}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7,
+              padding: "10px 16px", borderRadius: 10, flexShrink: 0, alignSelf: "flex-end",
+              background: !value.trim() || refining ? "var(--paper-2)" : "var(--accent)",
+              color: !value.trim() || refining ? "var(--faint)" : "#fff",
+              border: "none", cursor: !value.trim() || refining ? "default" : "pointer",
+              fontSize: 13, fontWeight: 600,
+              fontFamily: "var(--font-sans), system-ui, sans-serif",
+              transition: "all .15s",
+            }}
+          >
+            {refining
+              ? <span className="spin" style={{ width: 13, height: 13, border: "2px solid var(--line-2)", borderTopColor: "var(--accent)", borderRadius: 99, display: "inline-block" }} />
+              : <Icon name="wand" size={13} />
+            }
+            {refining ? "Refining…" : "Refine Edit →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export interface AdjustPayload {
   caption_style?: CaptionStyle;
   audio_treatment?: EditDecision["audio_treatment"];
@@ -579,15 +666,23 @@ function PerformanceTracker({ projectId, defaultPlatform }: { projectId: string;
 }
 
 interface ResultViewProps {
-  project: { id: string; desired_outcome: string; target_platform: string; edit_decisions: EditDecision };
+  project: {
+    id: string;
+    desired_outcome: string;
+    target_platform: string;
+    edit_decisions: EditDecision;
+    refinement_history?: RefinementEntry[];
+  };
   videoSrc: string | null;
   recutting?: boolean;
+  refining?: boolean;
   onAdjust: (changes: AdjustPayload) => Promise<void>;
+  onRefine?: (feedback: string) => Promise<void>;
   onRetry?: () => void;
   onDownload?: () => void;
 }
 
-export function ResultView({ project, videoSrc, recutting = false, onAdjust, onDownload }: ResultViewProps) {
+export function ResultView({ project, videoSrc, recutting = false, refining = false, onAdjust, onRefine, onDownload }: ResultViewProps) {
   const ed = project.edit_decisions;
 
   const [selections, setSelections] = useState<Record<string, number>>(() => deriveSelections(ed));
@@ -757,9 +852,16 @@ export function ResultView({ project, videoSrc, recutting = false, onAdjust, onD
             {player(300)}
             {summaryChips}
           </div>
-          {/* Right: rationale + performance tracker */}
+          {/* Right: rationale + refine + performance tracker */}
           <div>
             {rationaleCard}
+            {onRefine && (
+              <RefineFeedback
+                onRefine={onRefine}
+                history={project.refinement_history ?? []}
+                refining={refining}
+              />
+            )}
             {!recutting && (
               <PerformanceTracker projectId={project.id} defaultPlatform={project.target_platform} />
             )}
@@ -774,6 +876,13 @@ export function ResultView({ project, videoSrc, recutting = false, onAdjust, onD
         <div style={{ display: "flex", justifyContent: "center" }}>{summaryChips}</div>
         <div style={{ marginTop: 22 }}>
           {rationaleCard}
+          {onRefine && (
+            <RefineFeedback
+              onRefine={onRefine}
+              history={project.refinement_history ?? []}
+              refining={refining}
+            />
+          )}
           {!recutting && (
             <PerformanceTracker projectId={project.id} defaultPlatform={project.target_platform} />
           )}

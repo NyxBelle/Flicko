@@ -117,6 +117,7 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   const [project, setProject]     = useState<Project | null>(null);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [retrying, setRetrying]   = useState(false);
+  const [refining, setRefining]   = useState(false);
   const [hasBeenDone, setHasBeenDone] = useState(false);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -196,6 +197,28 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     }
   };
 
+  const handleRefine = async (feedback: string) => {
+    if (!projectId) return;
+    setRefining(true);
+    try {
+      const res = await fetch("/api/projects/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, feedback }),
+      });
+      if (!res.ok) throw new Error("Refinement failed");
+      toast.success("Flicko is refining your edit…");
+      setSignedUrl(null);
+      setProject(p => p ? { ...p, status: "rendering" } : p);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = setInterval(() => fetchProject(projectId), 4000);
+    } catch {
+      toast.error("Could not apply feedback. Please try again.");
+    } finally {
+      setRefining(false);
+    }
+  };
+
   const handleAdjust = async (changes: AdjustPayload) => {
     if (!projectId) return;
     try {
@@ -220,10 +243,11 @@ export default function ProjectPage({ params }: ProjectPageProps) {
 
   if (!project) return <LoadingSkeleton />;
 
-  const isProcessing = PROCESSING_STATUSES.has(project.status);
-  const isDone       = project.status === "done";
-  const isFailed     = project.status === "failed";
-  const isRerendering = hasBeenDone && project.status === "rendering";
+  const isProcessing  = PROCESSING_STATUSES.has(project.status);
+  const isDone        = project.status === "done";
+  const isFailed      = project.status === "failed";
+  // Show result (with shimmer) whenever hasBeenDone and the project is in any non-terminal state
+  const isRerendering = hasBeenDone && (project.status === "rendering" || PROCESSING_STATUSES.has(project.status));
 
   const pageStyle: React.CSSProperties = {
     padding: "36px clamp(18px, 5vw, 48px) 80px",
@@ -266,10 +290,13 @@ export default function ProjectPage({ params }: ProjectPageProps) {
             desired_outcome: project.desired_outcome ?? "",
             target_platform: project.target_platform,
             edit_decisions: project.edit_decisions as EditDecision,
+            refinement_history: project.refinement_history,
           }}
           videoSrc={signedUrl}
           recutting={isRerendering}
+          refining={refining}
           onAdjust={handleAdjust}
+          onRefine={handleRefine}
         />
       )}
 

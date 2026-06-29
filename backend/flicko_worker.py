@@ -923,6 +923,43 @@ def _update_project(supabase_url: str, key: str, project_id: str, payload: dict)
         print(f"[supabase] update failed {r.status_code}: {r.text[:200]}")
 
 
+# ─── Style preset prompts ─────────────────────────────────────────────────────
+
+_PRESET_PROMPTS = {
+    "raw_real": (
+        "\n\nSTYLE PRESET: Raw & Real\n"
+        "Minimal cuts. Let moments breathe — do not over-edit. Prefer medium or slow pacing. "
+        "Keep longer segments; only cut dead air and genuine filler. Avoid zoom transitions. "
+        "Caption style: minimal_bottom or none. Energy level: 1–3."
+    ),
+    "high_energy": (
+        "\n\nSTYLE PRESET: High Energy\n"
+        "Maximise energy. Fast cuts, never linger past the point. "
+        "Prefer very_fast pacing, viral_highlight captions. Energy level: 4–5. "
+        "Use zoom or swipe transitions. Every segment should land like a punch."
+    ),
+    "cinematic": (
+        "\n\nSTYLE PRESET: Cinematic\n"
+        "Slower, intentional pacing. Let music carry the emotional weight. "
+        "Build an arc — do not rush to the peak. Hold on visually powerful moments. "
+        "Prefer fade transitions. Caption style: minimal_bottom or professional. "
+        "Energy level: 2–3. Color grade: cinematic or moody."
+    ),
+    "educational": (
+        "\n\nSTYLE PRESET: Educational\n"
+        "Clarity above all. Clean structure, readable captions, easy to follow. "
+        "Do not sacrifice comprehension for energy. Keep the full explanation — cut only filler and dead air. "
+        "Caption style: bold_center or professional. Energy level: 2–3. Color grade: bright_clean or normalize."
+    ),
+    "viral_hook": (
+        "\n\nSTYLE PRESET: Viral Hook\n"
+        "The first 3 seconds are everything. Open with the single most scroll-stopping moment — not the start of the story. "
+        "The hook must create a question the viewer physically cannot leave without answering. "
+        "Everything after the hook exists to deliver on that promise. Fast, punchy, zero dead air. Energy level: 4–5."
+    ),
+}
+
+
 # ─── Claude edit decision (runs on Railway, not Vercel) ───────────────────────
 
 def _make_edit_decision(
@@ -936,6 +973,7 @@ def _make_edit_decision(
     has_voice_clone: bool,
     creator_patterns: Optional[list] = None,
     clip_boundaries: Optional[list] = None,  # list of (start, end) tuples in seconds
+    style_preset: Optional[str] = None,
 ) -> dict:
     try:
         import anthropic as _anthropic
@@ -943,6 +981,8 @@ def _make_edit_decision(
         raise RuntimeError("Install: pip install anthropic")
 
     system_prompt = _EDITOR_SYSTEM_PROMPT
+    if style_preset and style_preset in _PRESET_PROMPTS:
+        system_prompt += _PRESET_PROMPTS[style_preset]
     if creator_patterns:
         lines = "\n".join(
             f"  - {p['pattern_text']} [confidence: {round(p['confidence'] * 100)}%]"
@@ -1037,6 +1077,7 @@ class ProcessRequest(BaseModel):
     has_voice_clone: bool = False
     creator_patterns: Optional[List[CreatorPattern]] = None
     user_tier: str = "free"
+    style_preset: Optional[str] = None
 
 
 def _do_process(job_id: str, req: ProcessRequest) -> None:
@@ -1109,7 +1150,10 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
             has_voice_clone=req.has_voice_clone,
             creator_patterns=patterns_payload,
             clip_boundaries=clip_boundaries,
+            style_preset=req.style_preset,
         )
+        # Store duration so the refinement flow can use it without re-downloading videos
+        decision_dict["video_duration_seconds"] = total_dur
         _update_project(sb_url, sb_key, pid, {"edit_decisions": decision_dict})
 
         # Stage 4: Edit + render

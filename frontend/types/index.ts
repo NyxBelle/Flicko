@@ -32,6 +32,13 @@ export type ProjectStatus =
 
 export type AudioTreatment = "flicko_decides" | "voiceover" | "trending_sound";
 
+export type StylePreset = "raw_real" | "high_energy" | "cinematic" | "educational" | "viral_hook";
+
+export interface RefinementEntry {
+  feedback: string;
+  applied_at: string;
+}
+
 export type TargetPlatform = "tiktok" | "reels" | "shorts" | "linkedin" | "youtube";
 
 export type CaptionStyle =
@@ -113,6 +120,8 @@ export interface Project {
   openshorts_job_id: string | null;
   hyperframes_job_id: string | null;
   error_message: string | null;
+  style_preset?: StylePreset;
+  refinement_history?: RefinementEntry[];
   created_at: string;
   updated_at: string;
 }

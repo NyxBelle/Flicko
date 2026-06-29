@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
-import type { EditDecision, Segment, TargetPlatform, AudioTreatment } from "@/types";
+import type { EditDecision, Segment, TargetPlatform, AudioTreatment, StylePreset, RefinementEntry } from "@/types";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -266,6 +266,39 @@ interface OpenShortsClip {
   transcript: string;
 }
 
+const STYLE_PRESET_ADDITIONS: Record<StylePreset, string> = {
+  raw_real: (
+    "\n\nSTYLE PRESET: Raw & Real\n" +
+    "Minimal cuts. Let moments breathe — do not over-edit. Prefer medium or slow pacing. " +
+    "Keep longer segments; only cut dead air and filler. Avoid zoom transitions. " +
+    "Caption style: minimal_bottom or none. Energy level: 1–3."
+  ),
+  high_energy: (
+    "\n\nSTYLE PRESET: High Energy\n" +
+    "Maximise energy. Fast cuts, never linger. " +
+    "Prefer very_fast pacing, viral_highlight captions. Energy level: 4–5. " +
+    "Use zoom or swipe transitions. Every segment should land like a punch."
+  ),
+  cinematic: (
+    "\n\nSTYLE PRESET: Cinematic\n" +
+    "Slower, intentional pacing. Let music carry the emotional weight. " +
+    "Build an arc — do not rush to the peak. Hold on visually powerful moments. " +
+    "Prefer fade transitions. Caption style: minimal_bottom or professional. Energy level: 2–3. Color grade: cinematic or moody."
+  ),
+  educational: (
+    "\n\nSTYLE PRESET: Educational\n" +
+    "Clarity above all. Clean structure, readable captions, easy to follow. " +
+    "Do not sacrifice comprehension for energy. Keep the full explanation — cut only filler and dead air. " +
+    "Caption style: bold_center or professional. Energy level: 2–3. Color grade: bright_clean or normalize."
+  ),
+  viral_hook: (
+    "\n\nSTYLE PRESET: Viral Hook\n" +
+    "The first 3 seconds are everything. Open with the single most scroll-stopping moment — not the start of the story. " +
+    "The hook must create a question the viewer cannot leave without answering. " +
+    "Everything after the hook exists to deliver on that promise. Fast, punchy, zero dead air. Energy level: 4–5."
+  ),
+};
+
 interface EditorInput {
   transcript: string;
   contentContext: string;
@@ -276,6 +309,11 @@ interface EditorInput {
   hasVoiceClone: boolean;
   openShortsClips?: OpenShortsClip[];
   userId?: string;
+  stylePreset?: StylePreset;
+  // Refinement mode — provide these to modify an existing edit instead of generating fresh
+  refinementFeedback?: string;
+  existingDecision?: EditDecision;
+  refinementHistory?: RefinementEntry[];
 }
 
 function cleanSegments(segments: Segment[], videoDurationSeconds: number): Segment[] {
@@ -295,9 +333,11 @@ function cleanSegments(segments: Segment[], videoDurationSeconds: number): Segme
 }
 
 export async function makeEditDecision(input: EditorInput): Promise<EditDecision> {
-  // Inject creator pattern context if this user has performance history
   const patternContext = input.userId ? await getCreatorPatternContext(input.userId) : "";
-  const systemPrompt = patternContext ? SYSTEM_PROMPT + patternContext : SYSTEM_PROMPT;
+  let systemPrompt = patternContext ? SYSTEM_PROMPT + patternContext : SYSTEM_PROMPT;
+  if (input.stylePreset) {
+    systemPrompt += STYLE_PRESET_ADDITIONS[input.stylePreset] ?? "";
+  }
 
   // Build OpenShorts clip section if face-tracked clips are available
   let clipsSection = "";
@@ -310,7 +350,7 @@ ${clipLines}
 NOTE: If your chosen segment timestamps fall within any of the above clips, the face-tracking from that clip will be used, giving noticeably better framing. Prefer timestamps that overlap with available clips where the content warrants it — but never compromise the edit to fit the clips. Creative quality comes first.\n`;
   }
 
-  const userMessage = `VIDEO TRANSCRIPT:
+  const baseContext = `VIDEO TRANSCRIPT:
 ${input.transcript}
 
 ---
@@ -329,8 +369,32 @@ TARGET PLATFORM: ${input.targetPlatform}
 USER'S AUDIO PREFERENCE: ${input.audioPreference}
 VOICE CLONE AVAILABLE: ${input.hasVoiceClone ? "Yes — user has a cloned voice ready" : "No"}
 TOTAL VIDEO DURATION: ${input.videoDurationSeconds} seconds
-${clipsSection}
-Make your creative editing decisions now. Return only valid JSON.`;
+${clipsSection}`;
+
+  let userMessage: string;
+
+  if (input.refinementFeedback && input.existingDecision) {
+    const historyBlock = (input.refinementHistory?.length ?? 0) > 0
+      ? `\nREFINEMENT HISTORY (changes already applied in previous iterations):\n${input.refinementHistory!.map((h, i) => `  ${i + 1}. "${h.feedback}"`).join("\n")}\n`
+      : "";
+
+    userMessage = `${baseContext}
+---
+
+CURRENT EDIT DECISION (the edit to refine):
+${JSON.stringify(input.existingDecision, null, 2)}
+${historyBlock}
+---
+
+USER FEEDBACK:
+"${input.refinementFeedback}"
+
+---
+
+IMPORTANT: This is a targeted refinement, not a fresh edit. Change ONLY what the feedback directly asks for. Every aspect of the edit not addressed by the feedback — segments, timestamps, pacing, audio treatment, captions, rationale, all of it — must remain exactly the same. Return the complete updated JSON.`;
+  } else {
+    userMessage = `${baseContext}Make your creative editing decisions now. Return only valid JSON.`;
+  }
 
   const message = await client.messages.create({
     model: "claude-opus-4-7",

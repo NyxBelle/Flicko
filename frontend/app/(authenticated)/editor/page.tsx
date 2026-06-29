@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import VideoUploadZone, { type UploadedFile } from "@/components/editor/VideoUploadZone";
-import { Sparkles, Mic, Music, Upload, Lock } from "lucide-react";
-import type { TargetPlatform, AudioTreatment } from "@/types";
+import { Sparkles, Mic, Music, Upload, Lock, Video, Zap, Film, BookOpen, TrendingUp } from "lucide-react";
+import type { TargetPlatform, AudioTreatment, StylePreset } from "@/types";
 
 const PLATFORMS: { value: TargetPlatform; label: string; ratio: string }[] = [
   { value: "tiktok",   label: "TikTok",   ratio: "9:16" },
@@ -21,6 +21,14 @@ const OUTCOMES = [
   "Build watch-time",
   "Drive to my link",
   "Grow followers",
+];
+
+const STYLE_PRESETS: { value: StylePreset; label: string; desc: string; icon: React.ElementType }[] = [
+  { value: "raw_real",    label: "Raw & Real",   desc: "Minimal cuts, authentic feel, let moments breathe",           icon: Video       },
+  { value: "high_energy", label: "High Energy",  desc: "Fast cuts, kinetic captions, maximum punch",                  icon: Zap         },
+  { value: "cinematic",   label: "Cinematic",    desc: "Slower pacing, music-driven, emotional arc",                  icon: Film        },
+  { value: "educational", label: "Educational",  desc: "Clear structure, clean captions, easy to follow",             icon: BookOpen    },
+  { value: "viral_hook",  label: "Viral Hook",   desc: "Entire edit optimised for the first 3 seconds",              icon: TrendingUp  },
 ];
 
 const AUDIO_OPTIONS: { value: AudioTreatment; label: string; desc: string; icon: React.ElementType; proOnly?: boolean }[] = [
@@ -76,6 +84,7 @@ export default function EditorPage() {
   const [desiredOutcome, setDesiredOutcome] = useState("");
   const [platform, setPlatform] = useState<TargetPlatform>("tiktok");
   const [audioPreference, setAudioPreference] = useState<AudioTreatment>("flicko_decides");
+  const [stylePreset, setStylePreset] = useState<StylePreset>("high_energy");
   const [outcome, setOutcome] = useState<string | null>(null);
   const [userTier] = useState<"free" | "starter" | "pro">("free");
   const [submitting, setSubmitting] = useState(false);
@@ -101,6 +110,7 @@ export default function EditorPage() {
           desired_outcome: (outcome ?? desiredOutcome).trim(),
           target_platform: platform,
           audio_preference: audioPreference,
+          style_preset: stylePreset,
           status: "draft",
           video_urls: [],
         })
@@ -284,6 +294,51 @@ export default function EditorPage() {
                         </span>
                       )}
                     </div>
+                    <p style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{desc}</p>
+                  </div>
+                  {active && (
+                    <div style={{
+                      width: 18, height: 18, borderRadius: "50%", background: "var(--ink)",
+                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                    }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--paper)" }} />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Style preset */}
+        <section>
+          <SectionLabel>Edit style</SectionLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {STYLE_PRESETS.map(({ value, label, desc, icon: Icon }) => {
+              const active = stylePreset === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStylePreset(value)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
+                    borderRadius: 12, textAlign: "left",
+                    border: `1px solid ${active ? "var(--ink)" : "var(--line)"}`,
+                    background: active ? "color-mix(in oklab,var(--ink),#fff 94%)" : "var(--card)",
+                    cursor: "pointer", transition: "all 0.15s",
+                  }}
+                >
+                  <div style={{
+                    width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                    background: active ? "var(--ink)" : "var(--paper-2)",
+                    border: `1px solid ${active ? "transparent" : "var(--line)"}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Icon size={16} color={active ? "var(--paper)" : "var(--muted)"} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", display: "block" }}>{label}</span>
                     <p style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{desc}</p>
                   </div>
                   {active && (
