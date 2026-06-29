@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { EditDecision, CaptionStyle, MusicMood, MusicEnergy, ColorGrade, RefinementEntry } from "@/types";
 import { VPreview } from "./VPreview";
+import { toast } from "sonner";
 
 // ── Inline SVG icons (match design spec: 24×24, 1.7 stroke, round caps) ──────
 
@@ -691,6 +692,52 @@ export function ResultView({ project, videoSrc, recutting = false, refining = fa
   const [recutId, setRecutId]       = useState<string | null>(null);
   const [playing, setPlaying]       = useState(false);
 
+  const [downloading, setDownloading] = useState(false);
+
+  const platformLabel = ({
+    tiktok: "TikTok", reels: "Reels", shorts: "Shorts",
+    linkedin: "LinkedIn", youtube: "YouTube",
+  } as Record<string, string>)[project.target_platform] ?? "platform";
+
+  const PLATFORM_URLS: Record<string, string> = {
+    tiktok:   "https://www.tiktok.com/upload",
+    reels:    "https://www.instagram.com",
+    shorts:   "https://studio.youtube.com",
+    linkedin: "https://www.linkedin.com/feed/",
+    youtube:  "https://studio.youtube.com",
+  };
+
+  const handleDownload = async () => {
+    if (!videoSrc) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(videoSrc);
+      if (!res.ok) throw new Error("fetch failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `flicko-${project.id.slice(0, 8)}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Download started!");
+    } catch {
+      // CORS fallback — open in new tab so user can save manually
+      if (videoSrc) window.open(videoSrc, "_blank");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handlePost = async () => {
+    if (videoSrc) await handleDownload();
+    const url = PLATFORM_URLS[project.target_platform];
+    if (url) window.open(url, "_blank");
+    toast.success(`Video downloaded — open ${platformLabel} to upload it.`);
+  };
+
   const triggerRecut = (id: string, commit: () => void) => {
     setRecutId(id);
     setTimeout(() => { commit(); }, 350);
@@ -719,6 +766,28 @@ export function ResultView({ project, videoSrc, recutting = false, refining = fa
   // Caption style for the preview derives from current selection
   const captionOpt = DECISIONS.find(d => d.id === "captions")!.options![selections.captions];
   const previewCaptionStyle = captionOpt.fieldValue ?? "bold_center";
+
+  const actionBar = (
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <button
+        className="btn btn-accent"
+        onClick={() => void handleDownload()}
+        disabled={!videoSrc || downloading}
+      >
+        {downloading
+          ? <span className="spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff", borderRadius: 99, display: "inline-block" }} />
+          : <Icon name="download" size={15} />}
+        {downloading ? "Downloading…" : "Download Cut"}
+      </button>
+      <button
+        className="btn btn-ink"
+        onClick={() => void handlePost()}
+        disabled={!videoSrc}
+      >
+        <Icon name="share" size={15} /> Post to {platformLabel}
+      </button>
+    </div>
+  );
 
   const heading = (
     <div>
@@ -808,21 +877,6 @@ export function ResultView({ project, videoSrc, recutting = false, refining = fa
         </div>
       ))}
 
-      {/* Card footer */}
-      <div style={{ padding: "16px 22px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", background: "var(--paper)" }}>
-        {videoSrc ? (
-          <a href={videoSrc} download className="btn btn-accent btn-sm" style={{ textDecoration: "none" }}>
-            <Icon name="download" size={15} /> Download cut
-          </a>
-        ) : (
-          <button className="btn btn-accent btn-sm" disabled onClick={onDownload}>
-            <Icon name="download" size={15} /> Download cut
-          </button>
-        )}
-        <button className="btn btn-ink btn-sm">
-          <Icon name="share" size={15} /> Post to Reels
-        </button>
-      </div>
     </div>
   );
 
@@ -852,16 +906,21 @@ export function ResultView({ project, videoSrc, recutting = false, refining = fa
             {player(300)}
             {summaryChips}
           </div>
-          {/* Right: rationale + refine + performance tracker */}
+          {/* Right: actions + refine + rationale + performance tracker */}
           <div>
-            {rationaleCard}
+            {actionBar}
             {onRefine && (
-              <RefineFeedback
-                onRefine={onRefine}
-                history={project.refinement_history ?? []}
-                refining={refining}
-              />
+              <div style={{ marginTop: 12 }}>
+                <RefineFeedback
+                  onRefine={onRefine}
+                  history={project.refinement_history ?? []}
+                  refining={refining}
+                />
+              </div>
             )}
+            <div style={{ marginTop: 16 }}>
+              {rationaleCard}
+            </div>
             {!recutting && (
               <PerformanceTracker projectId={project.id} defaultPlatform={project.target_platform} />
             )}
@@ -875,33 +934,22 @@ export function ResultView({ project, videoSrc, recutting = false, refining = fa
         <div style={{ display: "flex", justifyContent: "center", margin: "0 0 4px" }}>{player(196)}</div>
         <div style={{ display: "flex", justifyContent: "center" }}>{summaryChips}</div>
         <div style={{ marginTop: 22 }}>
-          {rationaleCard}
+          {actionBar}
           {onRefine && (
-            <RefineFeedback
-              onRefine={onRefine}
-              history={project.refinement_history ?? []}
-              refining={refining}
-            />
+            <div style={{ marginTop: 12 }}>
+              <RefineFeedback
+                onRefine={onRefine}
+                history={project.refinement_history ?? []}
+                refining={refining}
+              />
+            </div>
           )}
+          <div style={{ marginTop: 16 }}>
+            {rationaleCard}
+          </div>
           {!recutting && (
             <PerformanceTracker projectId={project.id} defaultPlatform={project.target_platform} />
           )}
-        </div>
-
-        {/* Pinned bottom action bar */}
-        <div style={{ position: "sticky", bottom: 0, zIndex: 30, marginInline: -18, marginTop: 18, padding: "12px 18px 26px", background: "rgba(247,245,239,0.94)", backdropFilter: "saturate(140%) blur(14px)", borderTop: "1px solid var(--line)", display: "flex", gap: 10 }}>
-          {videoSrc ? (
-            <a href={videoSrc} download className="btn btn-accent" style={{ flex: 1, justifyContent: "center", textDecoration: "none" }}>
-              <Icon name="download" size={16} /> Download
-            </a>
-          ) : (
-            <button className="btn btn-accent" style={{ flex: 1, justifyContent: "center" }} disabled>
-              <Icon name="download" size={16} /> Download
-            </button>
-          )}
-          <button className="btn btn-ink" style={{ flex: 1, justifyContent: "center" }}>
-            <Icon name="share" size={16} /> Post
-          </button>
         </div>
       </div>
 
