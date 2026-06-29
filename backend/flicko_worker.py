@@ -577,6 +577,97 @@ def _run_remotion(
             pass
 
 
+# ─── Face-tracked reframing ───────────────────────────────────────────────────
+
+def _detect_subject_x_window(video_path: str, start_sec: float, end_sec: float) -> Optional[tuple]:
+    """
+    Sample frames in [start_sec, end_sec] of a source video and return the
+    median detected face x-centre as a fraction of frame width.
+
+    Returns (face_x_fraction, src_width, src_height) where face_x_fraction
+    may be None if no face was found (caller should fall back to center crop).
+    Returns None entirely if OpenCV is not installed.
+    """
+    try:
+        import cv2
+    except ImportError:
+        return None
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return None
+
+    W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    H = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if W == 0 or H == 0:
+        cap.release()
+        return None
+
+    face_cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    )
+
+    duration = max(0.1, end_sec - start_sec)
+    n_samples = max(4, min(10, int(duration * 2)))  # ~2 fps, cap at 10
+    x_centers = []
+
+    for i in range(n_samples):
+        t = start_sec + (i / (n_samples - 1)) * duration
+        cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
+        ret, frame = cap.read()
+        if not ret:
+            continue
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=4, minSize=(40, 40)
+        )
+        if len(faces) > 0:
+            fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+            x_centers.append((fx + fw / 2.0) / W)
+
+    cap.release()
+
+    if not x_centers:
+        return (None, W, H)
+
+    x_centers.sort()
+    median_x = x_centers[len(x_centers) // 2]
+    return (median_x, W, H)
+
+
+def _vf_portrait_with_face(src_w: int, src_h: int, face_x: Optional[float]) -> str:
+    """
+    Build an FFmpeg vf string targeting 1080×1920 (9:16) portrait output.
+
+    For already-portrait sources: scale/pad without cropping.
+    For landscape sources: crop a 9:16 slice centred on the detected face,
+    then scale/pad to 1080×1920.  Falls back to a center crop when face_x
+    is None (no face detected).
+    """
+    if src_h >= src_w:
+        # Already portrait — no crop needed
+        return (
+            "scale=1080:1920:force_original_aspect_ratio=decrease,"
+            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2"
+        )
+
+    # Landscape → portrait: extract a 9:16 vertical slice
+    crop_w = min(src_w, int(src_h * 9 / 16))
+
+    if face_x is not None:
+        ideal_left = int(face_x * src_w - crop_w / 2)
+        x_offset = max(0, min(ideal_left, src_w - crop_w))
+    else:
+        x_offset = (src_w - crop_w) // 2
+
+    return (
+        f"crop={crop_w}:{src_h}:{x_offset}:0,"
+        "scale=1080:1920:force_original_aspect_ratio=decrease,"
+        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2"
+    )
+
+
 # ─── Render pipeline ──────────────────────────────────────────────────────────
 
 def _do_render(
@@ -613,6 +704,7 @@ def _do_render(
             acc += d
 
         vf_str = _vf(platform)
+        is_vertical = platform in ("tiktok", "reels", "shorts")
 
         # 2. Extract segments in Claude's editorial order
         segs = sorted(ed.segments, key=lambda s: s.order)
@@ -629,7 +721,18 @@ def _do_render(
             le = min(ge - cumul[src_i], src_durs[src_i])
             if le <= ls:
                 continue
-            _ffmpeg_cut(sources[src_i], ls, le, vf_str, out, speed=seg.speed or 1.0)
+
+            # For vertical output, attempt face-tracked crop per segment
+            seg_vf = vf_str
+            if is_vertical:
+                face_result = _detect_subject_x_window(sources[src_i], ls, le)
+                if face_result is not None:
+                    face_x, src_w, src_h = face_result
+                    seg_vf = _vf_portrait_with_face(src_w, src_h, face_x)
+                    label = f"{face_x:.0%}" if face_x is not None else "center fallback"
+                    print(f"[reframe] clip {idx}: face={label}")
+
+            _ffmpeg_cut(sources[src_i], ls, le, seg_vf, out, speed=seg.speed or 1.0)
             if os.path.exists(out):
                 extracted.append(out)
                 ext_durs.append(_duration(out))
