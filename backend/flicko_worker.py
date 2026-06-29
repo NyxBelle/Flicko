@@ -748,12 +748,15 @@ def _do_render(
             # For vertical output, attempt face-tracked crop per segment
             seg_vf = vf_str
             if is_vertical:
-                face_result = _detect_subject_x_window(sources[src_i], ls, le)
-                if face_result is not None:
-                    face_x, src_w, src_h = face_result
-                    seg_vf = _vf_portrait_with_face(src_w, src_h, face_x)
-                    label = f"{face_x:.0%}" if face_x is not None else "center fallback"
-                    print(f"[reframe] clip {idx}: face={label}")
+                try:
+                    face_result = _detect_subject_x_window(sources[src_i], ls, le)
+                    if face_result is not None:
+                        face_x, src_w, src_h = face_result
+                        seg_vf = _vf_portrait_with_face(src_w, src_h, face_x)
+                        label = f"{face_x:.0%}" if face_x is not None else "center fallback"
+                        print(f"[reframe] clip {idx}: face={label}")
+                except Exception as fe:
+                    print(f"[reframe] clip {idx}: face detection failed ({fe}), using default crop")
 
             _ffmpeg_cut(sources[src_i], ls, le, seg_vf, out, speed=seg.speed or 1.0)
             if os.path.exists(out):
@@ -919,9 +922,15 @@ def render(req: RenderRequest):
                 req.user_tier,
             )
         except Exception as exc:
+            tb = traceback.format_exc()
+            print(f"[render] {job_id} failed:\n{tb}")
+            last_loc = next(
+                (ln.strip() for ln in reversed(tb.splitlines()) if ln.strip().startswith("File")),
+                "",
+            )
             _update_project(req.supabase_url, req.supabase_service_key, req.project_id, {
                 "status": "failed",
-                "error_message": str(exc),
+                "error_message": f"{type(exc).__name__}: {exc}" + (f"\n\n{last_loc}" if last_loc else ""),
             })
 
     threading.Thread(target=_run, daemon=True).start()
@@ -1312,8 +1321,16 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
         )
 
     except Exception as exc:
-        print(f"[process] {pid} failed:\n{traceback.format_exc()}")
-        _update_project(sb_url, sb_key, pid, {"status": "failed", "error_message": str(exc)})
+        tb = traceback.format_exc()
+        print(f"[process] {pid} failed:\n{tb}")
+        last_loc = next(
+            (ln.strip() for ln in reversed(tb.splitlines()) if ln.strip().startswith("File")),
+            "",
+        )
+        _update_project(sb_url, sb_key, pid, {
+            "status": "failed",
+            "error_message": f"{type(exc).__name__}: {exc}" + (f"\n\n{last_loc}" if last_loc else ""),
+        })
     finally:
         if work and os.path.exists(work):
             shutil.rmtree(work, ignore_errors=True)
