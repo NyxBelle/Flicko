@@ -279,6 +279,11 @@ def _get_whisper():
 
 def _transcribe_local(video_path: str) -> tuple:
     """Returns (transcript_text, transcript_words). Runs fully locally via faster-whisper."""
+    # PyAV (faster-whisper's audio decoder) raises IndexError on video-only files
+    if not _has_audio_stream(video_path):
+        print(f"[transcribe] {video_path} has no audio stream — skipping transcription")
+        return "", []
+
     model = _get_whisper()
     if model is None:
         return "", []
