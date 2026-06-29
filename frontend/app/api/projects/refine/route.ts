@@ -19,17 +19,21 @@ function serviceClient() {
 }
 
 export async function POST(req: NextRequest) {
+  const db = serviceClient();
+  let projectId: string | undefined;
+
   try {
     const supabase = await createServerClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { projectId, feedback } = await req.json() as { projectId: string; feedback: string };
+    const body = await req.json() as { projectId: string; feedback: string };
+    projectId = body.projectId;
+    const { feedback } = body;
     if (!projectId || !feedback?.trim()) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const db = serviceClient();
     const { data: project } = await db
       .from("projects")
       .select("*")
@@ -44,7 +48,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Project not ready for refinement" }, { status: 400 });
     }
 
-    const ed = p.edit_decisions as EditDecision & { video_duration_seconds?: number };
+    const ed = p.edit_decisions as EditDecision & {
+      video_duration_seconds?: number;
+      transcript_words?: Array<{ word: string; start: number; end: number }>;
+    };
     // Prefer stored duration; fall back to last segment end + buffer for old projects
     const duration = ed.video_duration_seconds
       ?? Math.max(...ed.segments.map(s => s.end), 30) + 15;
@@ -107,6 +114,7 @@ export async function POST(req: NextRequest) {
         supabase_url:         process.env.NEXT_PUBLIC_SUPABASE_URL,
         supabase_service_key: process.env.SUPABASE_SERVICE_ROLE_KEY,
         user_tier:            userTier,
+        transcript_words:     ed.transcript_words ?? null,
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -123,6 +131,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[refine route]", err);
+    if (projectId) {
+      try {
+        await db.from("projects").update({
+          status: "failed",
+          error_message: "Refinement failed unexpectedly. Please retry.",
+        }).eq("id", projectId);
+      } catch { /* best-effort — don't mask the original error */ }
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

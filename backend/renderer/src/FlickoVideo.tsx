@@ -41,14 +41,21 @@ const TRANSITION_FRAMES = 9; // 0.3s at 30fps
 const HOOK_DURATION = 75;    // 2.5s
 const HOOK_FADE_OUT = 15;    // 0.5s
 
-function getCaptionPosition(style: string): {bottom: number | string; fontSize: number; fontWeight: number} {
+interface CaptionPosition {
+  bottom: number | string;
+  fontSize: number;
+  fontWeight: number;
+  pill?: boolean; // dark background backing for professional style
+}
+
+function getCaptionPosition(style: string): CaptionPosition {
   switch (style) {
     case 'viral_highlight':
       return {bottom: '38%', fontSize: 72, fontWeight: 900};
     case 'minimal_bottom':
       return {bottom: 80, fontSize: 44, fontWeight: 600};
     case 'professional':
-      return {bottom: 100, fontSize: 40, fontWeight: 500};
+      return {bottom: 100, fontSize: 40, fontWeight: 500, pill: true};
     case 'bold_center':
     default:
       return {bottom: '42%', fontSize: 68, fontWeight: 900};
@@ -68,10 +75,13 @@ function KaraokeCaption({
 }) {
   if (frame < cap.startFrame || frame > cap.endFrame) return null;
 
-  const {bottom, fontSize, fontWeight} = getCaptionPosition(captionStyle);
+  const {bottom, fontSize, fontWeight, pill} = getCaptionPosition(captionStyle);
   const capAge = frame - cap.startFrame;
   const phraseOpacity = interpolate(capAge, [0, 5], [0, 1], {extrapolateRight: 'clamp'});
   const shadow = '3px 3px 10px rgba(0,0,0,0.95)';
+  const pillStyle = pill
+    ? {background: 'rgba(0,0,0,0.6)', padding: '8px 20px', borderRadius: 8}
+    : {};
 
   // No word-level data — fall back to plain phrase render
   if (!cap.words || cap.words.length === 0) {
@@ -100,6 +110,7 @@ function KaraokeCaption({
             maxWidth: '88%',
             opacity: phraseOpacity,
             transform: `scale(${popScale})`,
+            ...pillStyle,
           }}
         >
           {cap.text}
@@ -135,6 +146,7 @@ function KaraokeCaption({
           justifyContent: 'center',
           gap: '0 10px',
           lineHeight: 1.2,
+          ...pillStyle,
         }}
       >
         {cap.words.map((w, j) => {

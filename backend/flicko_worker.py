@@ -216,30 +216,49 @@ def _upload_supabase(path: str, supabase_url: str, key: str, dest: str) -> None:
             time.sleep(5)
 
 
+def _has_audio_stream(path: str) -> bool:
+    """Return True if the file contains at least one audio stream."""
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a:0",
+         "-show_entries", "stream=codec_type", "-of", "csv=p=0", path],
+        capture_output=True, text=True,
+    )
+    return "audio" in r.stdout
+
+
 def _ffmpeg_cut(src: str, ls: float, le: float, vf_str: str, out: str, speed: float = 1.0) -> None:
     speed = speed if speed and speed > 0 else 1.0
     video_filter = vf_str
-    # afftdn removes broadband noise (hiss, hum, wind, AC) without audible artifacts
-    audio_filters = ["afftdn=nf=-25"]
-
-    if abs(speed - 1.0) > 0.05:
-        pts = 1.0 / speed
-        video_filter = f"{vf_str},setpts={pts:.4f}*PTS"
-        if speed <= 0.5:
-            audio_filters += ["atempo=0.5", "atempo=1.0"]
-        elif speed >= 2.0:
-            audio_filters += ["atempo=2.0"]
-        else:
-            audio_filters += [f"atempo={speed:.4f}"]
 
     cmd = [
         "ffmpeg", "-y",
         "-ss", f"{ls:.4f}", "-to", f"{le:.4f}", "-i", src,
         "-vf", video_filter,
         "-r", "30", "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-        "-af", ",".join(audio_filters),
-        "-c:a", "aac", "-ar", "44100", "-ac", "2", out,
     ]
+
+    if _has_audio_stream(src):
+        # afftdn removes broadband noise (hiss, hum, wind, AC) without audible artifacts
+        audio_filters = ["afftdn=nf=-25"]
+        if abs(speed - 1.0) > 0.05:
+            pts = 1.0 / speed
+            video_filter = f"{vf_str},setpts={pts:.4f}*PTS"
+            cmd[cmd.index("-vf") + 1] = video_filter
+            if speed <= 0.5:
+                audio_filters += ["atempo=0.5", "atempo=1.0"]
+            elif speed >= 2.0:
+                audio_filters += ["atempo=2.0"]
+            else:
+                audio_filters += [f"atempo={speed:.4f}"]
+        cmd += ["-af", ",".join(audio_filters), "-c:a", "aac", "-ar", "44100", "-ac", "2"]
+    else:
+        if abs(speed - 1.0) > 0.05:
+            pts = 1.0 / speed
+            video_filter = f"{vf_str},setpts={pts:.4f}*PTS"
+            cmd[cmd.index("-vf") + 1] = video_filter
+        cmd += ["-an"]
+
+    cmd.append(out)
     subprocess.run(cmd, check=True, capture_output=True)
 
 
@@ -749,7 +768,7 @@ def _do_render(
         out_words = []
         if tx_words:
             t = 0.0
-            for seg, dur in zip(segs, ext_durs):
+            for seg, dur in zip(extracted_segs, ext_durs):
                 for w in tx_words:
                     if seg.start <= w["start"] < seg.end:
                         offset = t + (w["start"] - seg.start)
@@ -1265,8 +1284,10 @@ def _do_process(job_id: str, req: ProcessRequest) -> None:
             clip_boundaries=clip_boundaries,
             style_preset=req.style_preset,
         )
-        # Store duration so the refinement flow can use it without re-downloading videos
+        # Store duration and word timestamps so the refinement flow can reconstruct
+        # captions without re-downloading or re-transcribing the source videos
         decision_dict["video_duration_seconds"] = total_dur
+        decision_dict["transcript_words"] = transcript_words
         _update_project(sb_url, sb_key, pid, {"edit_decisions": decision_dict})
 
         # Stage 4: Edit + render
